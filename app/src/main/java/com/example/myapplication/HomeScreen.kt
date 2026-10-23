@@ -1,0 +1,402 @@
+package com.example.myapplication
+
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+private val Bg = Color(0xFF0F1220)
+private val TextPrimary = Color(0xFFF4F6FF)
+private val TextSecondary = Color(0xFFC3CBE2)
+private val Cyan = Color(0xFF00D2FF)
+private val Purple = Color(0xFF6C5CE7)
+private val PurpleSoft = Color(0xFFB5A7FF)
+private val LinkColor = Color(0xFFAA9FFF)
+private val Gold = Color(0xFFFFB84D)
+private val CardBg = Color(0xFF1A1F36)
+private val QuestCardBg = Color(0xFF25213E)
+
+private val Poppins: FontFamily = FontFamily.SansSerif
+private val Inter: FontFamily = FontFamily.SansSerif
+private val Mono: FontFamily = FontFamily.Monospace
+
+@Composable
+fun HomeScreen(
+    onContinueQuest: () -> Unit = {},
+    onQuestMap: () -> Unit = {},
+    onOpenChapter: () -> Unit = {},
+    onAskAi: () -> Unit = {}
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Bg)
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Level status
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "A little better than yesterday.",
+                style = TextStyle(fontFamily = Inter, fontSize = 14.sp, color = TextSecondary)
+            )
+            Badge("LVL 08", Purple.copy(alpha = 0.09f), PurpleSoft)
+        }
+
+        // Metrics
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            MetricCard("7 🔥", "day streak", Gold, Modifier.weight(1f))
+            MetricCard("2,450", "total XP · top 12%", Cyan, Modifier.weight(1f))
+        }
+
+        // Daily quest card
+        val questShape = RoundedCornerShape(16.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(questShape)
+                .background(QuestCardBg)
+                .border(1.dp, Color.White.copy(alpha = 0.07f), questShape)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Badge("DAILY QUEST", Purple.copy(alpha = 0.09f), PurpleSoft)
+                Text(
+                    text = "+150 XP",
+                    style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold)
+                )
+            }
+            Text(
+                text = "Find it. Faster.",
+                style = TextStyle(
+                    fontFamily = Poppins,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 22.sp,
+                    lineHeight = 29.sp,
+                    color = TextPrimary
+                )
+            )
+            Text(
+                text = "Master binary search, visualize the logic,\nthen put your instincts to the test.",
+                style = TextStyle(
+                    fontFamily = Inter,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp,
+                    color = TextSecondary
+                )
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = 0.07f))
+            ) {
+                Box(
+                    Modifier
+                        .fillMaxWidth(0.33f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Purple)
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "1 of 3 steps complete",
+                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                )
+                Text(
+                    text = "~12 min left",
+                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                )
+            }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(Purple)
+                    .clickable(onClick = onContinueQuest),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconCanvas(18.dp) { d -> drawArrowRight(d) }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Continue quest",
+                    style = TextStyle(
+                        fontFamily = Inter,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                )
+            }
+        }
+
+        // Section heading
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Your learning path",
+                style = TextStyle(
+                    fontFamily = Poppins,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = TextPrimary
+                )
+            )
+            Text(
+                text = "Quest map",
+                modifier = Modifier.clickable(onClick = onQuestMap),
+                style = TextStyle(
+                    fontFamily = Inter,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 12.sp,
+                    color = LinkColor
+                )
+            )
+        }
+
+        PathCard(
+            title = "Searching algorithms",
+            subtitle = "Chapter 03 · 2 of 5 lessons complete",
+            tileColor = Cyan.copy(alpha = 0.11f),
+            onClick = onOpenChapter
+        ) { d -> drawScanSearch(d) }
+
+        PathCard(
+            title = "Your next breakthrough?",
+            subtitle = "Ask Quest AI to explain any concept",
+            tileColor = Purple.copy(alpha = 0.11f),
+            onClick = onAskAi
+        ) { d -> drawSparkles(d, PurpleSoft) }
+    }
+}
+
+@Composable
+private fun MetricCard(value: String, label: String, valueColor: Color, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = modifier
+            .clip(shape)
+            .background(CardBg)
+            .border(1.dp, Color.White.copy(alpha = 0.06f), shape)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = value,
+            style = TextStyle(
+                fontFamily = Poppins,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 23.sp,
+                lineHeight = 30.sp,
+                color = valueColor
+            )
+        )
+        Text(
+            text = label,
+            style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary)
+        )
+    }
+}
+
+@Composable
+private fun PathCard(
+    title: String,
+    subtitle: String,
+    tileColor: Color,
+    onClick: () -> Unit,
+    icon: DrawScope.(Float) -> Unit
+) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(Brush.horizontalGradient(listOf(Color(0xFF252B46), CardBg)))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), shape)
+            .clickable(onClick = onClick)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .background(tileColor),
+            contentAlignment = Alignment.Center
+        ) {
+            IconCanvas(20.dp, icon)
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = title,
+                style = TextStyle(
+                    fontFamily = Inter,
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 14.sp,
+                    color = TextPrimary
+                )
+            )
+            Text(
+                text = subtitle,
+                style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary)
+            )
+        }
+        IconCanvas(16.dp) { d -> drawChevronRight(d) }
+    }
+}
+
+@Composable
+private fun Badge(text: String, background: Color, textColor: Color) {
+    Box(
+        modifier = Modifier
+            .height(26.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(background)
+            .padding(horizontal = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            style = TextStyle(
+                fontFamily = Inter,
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                color = textColor
+            )
+        )
+    }
+}
+
+// ---------- Small icons drawn in code ----------
+
+@Composable
+private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
+    Canvas(Modifier.size(size)) { draw(this, density) }
+}
+
+private fun lineStroke(d: Float, w: Float = 1.5f) =
+    Stroke(width = w * d, cap = StrokeCap.Round, join = StrokeJoin.Round)
+
+private fun DrawScope.drawArrowRight(d: Float) {
+    val w = 2f * d
+    drawLine(Color.White, Offset(3f * d, 9f * d), Offset(15f * d, 9f * d), w, StrokeCap.Round)
+    drawLine(Color.White, Offset(10f * d, 4f * d), Offset(15f * d, 9f * d), w, StrokeCap.Round)
+    drawLine(Color.White, Offset(10f * d, 14f * d), Offset(15f * d, 9f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawChevronRight(d: Float) {
+    val w = 1.6f * d
+    drawLine(TextSecondary, Offset(6f * d, 3f * d), Offset(11f * d, 8f * d), w, StrokeCap.Round)
+    drawLine(TextSecondary, Offset(11f * d, 8f * d), Offset(6f * d, 13f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawScanSearch(d: Float) {
+    val c = Cyan
+    val w = 1.5f * d
+    // four corner brackets
+    drawLine(c, Offset(2.5f * d, 7f * d), Offset(2.5f * d, 2.5f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(2.5f * d, 2.5f * d), Offset(7f * d, 2.5f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(13f * d, 2.5f * d), Offset(17.5f * d, 2.5f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(17.5f * d, 2.5f * d), Offset(17.5f * d, 7f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(17.5f * d, 13f * d), Offset(17.5f * d, 17.5f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(17.5f * d, 17.5f * d), Offset(13f * d, 17.5f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(7f * d, 17.5f * d), Offset(2.5f * d, 17.5f * d), w, StrokeCap.Round)
+    drawLine(c, Offset(2.5f * d, 17.5f * d), Offset(2.5f * d, 13f * d), w, StrokeCap.Round)
+    // magnifier
+    drawCircle(c, radius = 3f * d, center = Offset(9.5f * d, 9.5f * d), style = lineStroke(d))
+    drawLine(c, Offset(11.8f * d, 11.8f * d), Offset(14f * d, 14f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawSparkles(d: Float, color: Color) {
+    drawStar(d, color, cx = 8f, cy = 12f, r = 6.5f)
+    drawStar(d, color, cx = 15.5f, cy = 4.8f, r = 3.3f)
+}
+
+private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: Float) {
+    val i = r * 0.3f
+    val path = Path().apply {
+        moveTo(cx * d, (cy - r) * d)
+        lineTo((cx + i) * d, (cy - i) * d)
+        lineTo((cx + r) * d, cy * d)
+        lineTo((cx + i) * d, (cy + i) * d)
+        lineTo(cx * d, (cy + r) * d)
+        lineTo((cx - i) * d, (cy + i) * d)
+        lineTo((cx - r) * d, cy * d)
+        lineTo((cx - i) * d, (cy - i) * d)
+        close()
+    }
+    drawPath(path, color, style = lineStroke(d, 1.4f))
+}
+
+@Preview(showBackground = true, widthDp = 390, heightDp = 844)
+@Composable
+private fun HomeScreenPreview() {
+    HomeScreen()
+}
+
