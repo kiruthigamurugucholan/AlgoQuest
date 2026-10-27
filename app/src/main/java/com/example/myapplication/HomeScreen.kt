@@ -62,173 +62,195 @@ fun HomeScreen(
     onContinueQuest: () -> Unit = {},
     onQuestMap: () -> Unit = {},
     onOpenChapter: () -> Unit = {},
-    onAskAi: () -> Unit = {}
+    onAskAi: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
+    onOpenVisualizer: () -> Unit = {},
+    onSelectTab: (Int) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Bg)
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .verticalScroll(rememberScrollState())
-            .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Level status
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "A little better than yesterday.",
-                style = TextStyle(fontFamily = Inter, fontSize = 14.sp, color = TextSecondary)
-            )
-            Badge("LVL 08", Purple.copy(alpha = 0.09f), PurpleSoft)
-        }
-
-        // Metrics
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            MetricCard("7 🔥", "day streak", Gold, Modifier.weight(1f))
-            MetricCard("2,450", "total XP · top 12%", Cyan, Modifier.weight(1f))
-        }
-
-        // Daily quest card
-        val questShape = RoundedCornerShape(16.dp)
         Column(
             modifier = Modifier
+                .weight(1f)
                 .fillMaxWidth()
-                .clip(questShape)
-                .background(QuestCardBg)
-                .border(1.dp, Color.White.copy(alpha = 0.07f), questShape)
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Level status & profile header trigger
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Badge("DAILY QUEST", Purple.copy(alpha = 0.09f), PurpleSoft)
                 Text(
-                    text = "+150 XP",
-                    style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold)
+                    text = "A little better than yesterday.",
+                    style = TextStyle(fontFamily = Inter, fontSize = 14.sp, color = TextSecondary)
                 )
-            }
-            Text(
-                text = "Find it. Faster.",
-                style = TextStyle(
-                    fontFamily = Poppins,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 22.sp,
-                    lineHeight = 29.sp,
-                    color = TextPrimary
-                )
-            )
-            Text(
-                text = "Master binary search, visualize the logic,\nthen put your instincts to the test.",
-                style = TextStyle(
-                    fontFamily = Inter,
-                    fontSize = 13.sp,
-                    lineHeight = 19.sp,
-                    color = TextSecondary
-                )
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(Color.White.copy(alpha = 0.07f))
-            ) {
                 Box(
-                    Modifier
-                        .fillMaxWidth(0.33f)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Purple)
-                )
+                    modifier = Modifier.clickable(onClick = onOpenProfile)
+                ) {
+                    Badge("LVL 08", Purple.copy(alpha = 0.09f), PurpleSoft)
+                }
             }
+
+            // Metrics
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = "1 of 3 steps complete",
-                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
-                )
-                Text(
-                    text = "~12 min left",
-                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
-                )
+                MetricCard("7 🔥", "day streak", Gold, Modifier.weight(1f).clickable(onClick = onOpenProfile))
+                MetricCard("2,450", "total XP · top 12%", Cyan, Modifier.weight(1f).clickable(onClick = onOpenProfile))
             }
-            Row(
+
+            // Daily quest card
+            val questShape = RoundedCornerShape(16.dp)
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Purple)
-                    .clickable(onClick = onContinueQuest),
-                horizontalArrangement = Arrangement.Center,
+                    .clip(questShape)
+                    .background(QuestCardBg)
+                    .border(1.dp, Color.White.copy(alpha = 0.07f), questShape)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Badge("DAILY QUEST", Purple.copy(alpha = 0.09f), PurpleSoft)
+                    Text(
+                        text = "+150 XP",
+                        style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold)
+                    )
+                }
+                Text(
+                    text = "Find it. Faster.",
+                    style = TextStyle(
+                        fontFamily = Poppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 22.sp,
+                        lineHeight = 29.sp,
+                        color = TextPrimary
+                    )
+                )
+                Text(
+                    text = "Master binary search, visualize the logic,\nthen put your instincts to the test.",
+                    style = TextStyle(
+                        fontFamily = Inter,
+                        fontSize = 13.sp,
+                        lineHeight = 19.sp,
+                        color = TextSecondary
+                    )
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(Color.White.copy(alpha = 0.07f))
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(0.33f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Purple)
+                    )
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "1 of 3 steps complete",
+                        style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                    )
+                    Text(
+                        text = "~12 min left",
+                        style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Purple)
+                        .clickable(onClick = onContinueQuest),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconCanvas(18.dp) { d -> drawArrowRight(d) }
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Continue quest",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 15.sp,
+                            color = Color.White
+                        )
+                    )
+                }
+            }
+
+            // Section heading
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconCanvas(18.dp) { d -> drawArrowRight(d) }
-                Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "Continue quest",
+                    text = "Your learning path",
+                    style = TextStyle(
+                        fontFamily = Poppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = TextPrimary
+                    )
+                )
+                Text(
+                    text = "Quest map",
+                    modifier = Modifier.clickable(onClick = onQuestMap),
                     style = TextStyle(
                         fontFamily = Inter,
                         fontWeight = FontWeight.Medium,
-                        fontSize = 15.sp,
-                        color = Color.White
+                        fontSize = 12.sp,
+                        color = LinkColor
                     )
                 )
             }
+
+            PathCard(
+                title = "Searching algorithms",
+                subtitle = "Chapter 03 · 2 of 5 lessons complete",
+                tileColor = Cyan.copy(alpha = 0.11f),
+                onClick = onOpenChapter
+            ) { d -> drawScanSearch(d) }
+
+            PathCard(
+                title = "Interactive Visualizer Lab",
+                subtitle = "Step through Binary Search & Sorting",
+                tileColor = Gold.copy(alpha = 0.11f),
+                onClick = onOpenVisualizer
+            ) { d -> drawLab(d) }
+
+            PathCard(
+                title = "Your next breakthrough?",
+                subtitle = "Ask Quest AI to explain any concept",
+                tileColor = Purple.copy(alpha = 0.11f),
+                onClick = onAskAi
+            ) { d -> drawSparkles(d, PurpleSoft) }
         }
 
-        // Section heading
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Your learning path",
-                style = TextStyle(
-                    fontFamily = Poppins,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = 16.sp,
-                    color = TextPrimary
-                )
-            )
-            Text(
-                text = "Quest map",
-                modifier = Modifier.clickable(onClick = onQuestMap),
-                style = TextStyle(
-                    fontFamily = Inter,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 12.sp,
-                    color = LinkColor
-                )
-            )
-        }
-
-        PathCard(
-            title = "Searching algorithms",
-            subtitle = "Chapter 03 · 2 of 5 lessons complete",
-            tileColor = Cyan.copy(alpha = 0.11f),
-            onClick = onOpenChapter
-        ) { d -> drawScanSearch(d) }
-
-        PathCard(
-            title = "Your next breakthrough?",
-            subtitle = "Ask Quest AI to explain any concept",
-            tileColor = Purple.copy(alpha = 0.11f),
-            onClick = onAskAi
-        ) { d -> drawSparkles(d, PurpleSoft) }
+        // Shared Reusable Bottom Navigation Bar
+        AlgoQuestBottomBar(selectedTab = 0, onSelectTab = onSelectTab)
     }
 }
 
@@ -359,7 +381,6 @@ private fun DrawScope.drawChevronRight(d: Float) {
 private fun DrawScope.drawScanSearch(d: Float) {
     val c = Cyan
     val w = 1.5f * d
-    // four corner brackets
     drawLine(c, Offset(2.5f * d, 7f * d), Offset(2.5f * d, 2.5f * d), w, StrokeCap.Round)
     drawLine(c, Offset(2.5f * d, 2.5f * d), Offset(7f * d, 2.5f * d), w, StrokeCap.Round)
     drawLine(c, Offset(13f * d, 2.5f * d), Offset(17.5f * d, 2.5f * d), w, StrokeCap.Round)
@@ -368,9 +389,15 @@ private fun DrawScope.drawScanSearch(d: Float) {
     drawLine(c, Offset(17.5f * d, 17.5f * d), Offset(13f * d, 17.5f * d), w, StrokeCap.Round)
     drawLine(c, Offset(7f * d, 17.5f * d), Offset(2.5f * d, 17.5f * d), w, StrokeCap.Round)
     drawLine(c, Offset(2.5f * d, 17.5f * d), Offset(2.5f * d, 13f * d), w, StrokeCap.Round)
-    // magnifier
     drawCircle(c, radius = 3f * d, center = Offset(9.5f * d, 9.5f * d), style = lineStroke(d))
     drawLine(c, Offset(11.8f * d, 11.8f * d), Offset(14f * d, 14f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawLab(d: Float) {
+    val c = Gold
+    drawLine(c, Offset(4f * d, 15f * d), Offset(4f * d, 10f * d), 2f * d, StrokeCap.Round)
+    drawLine(c, Offset(9f * d, 15f * d), Offset(9f * d, 5f * d), 2f * d, StrokeCap.Round)
+    drawLine(c, Offset(14f * d, 15f * d), Offset(14f * d, 2f * d), 2f * d, StrokeCap.Round)
 }
 
 private fun DrawScope.drawSparkles(d: Float, color: Color) {
@@ -386,8 +413,6 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
         lineTo((cx + r) * d, cy * d)
         lineTo((cx + i) * d, (cy + i) * d)
         lineTo(cx * d, (cy + r) * d)
-        lineTo((cx - i) * d, (cy + i) * d)
-        lineTo((cx - r) * d, cy * d)
         lineTo((cx - i) * d, (cy - i) * d)
         close()
     }
@@ -399,4 +424,3 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
 private fun HomeScreenPreview() {
     HomeScreen()
 }
-
