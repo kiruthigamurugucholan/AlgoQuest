@@ -1,6 +1,7 @@
 package com.example.myapplication.data.remote
 
 import android.content.Context
+import android.os.Build
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -8,12 +9,36 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    // PC LAN IP for physical device on 172.23.x.x network.
-    // Replace with http://10.0.2.2/algoquest_backend/api/ if testing on Android Emulator.
-    var baseUrl: String = "http://172.23.176.205/algoquest_backend/api/"
+    // Custom base URL override (if specified)
+    var customBaseUrl: String? = null
 
     private var retrofit: Retrofit? = null
     private var apiServiceInstance: ApiService? = null
+
+    fun isEmulator(): Boolean {
+        return (Build.FINGERPRINT.startsWith("generic")
+                || Build.FINGERPRINT.startsWith("unknown")
+                || Build.MODEL.contains("google_sdk")
+                || Build.MODEL.contains("Emulator")
+                || Build.MODEL.contains("Android SDK built for x86")
+                || Build.MANUFACTURER.contains("Genymotion")
+                || Build.HARDWARE.contains("goldfish")
+                || Build.HARDWARE.contains("ranchu")
+                || Build.PRODUCT.contains("sdk_gphone")
+                || Build.PRODUCT.contains("sdk"))
+    }
+
+    fun getResolvedBaseUrl(): String {
+        val override = customBaseUrl?.trim()
+        if (!override.isNullOrBlank()) {
+            return if (override.endsWith("/")) override else "$override/"
+        }
+        return if (isEmulator()) {
+            "http://10.0.2.2/algoquest_backend/api/"
+        } else {
+            "http://172.23.176.205/algoquest_backend/api/"
+        }
+    }
 
     fun getApiService(context: Context): ApiService {
         return apiServiceInstance ?: synchronized(this) {
@@ -42,30 +67,18 @@ object RetrofitClient {
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(5, TimeUnit.SECONDS)
-            .writeTimeout(5, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .build()
 
-        val safeBaseUrl = try {
-            val url = baseUrl.trim()
-            if (url.endsWith("/")) url else "$url/"
-        } catch (_: Exception) {
-            "http://172.23.176.205/algoquest_backend/api/"
-        }
+        val baseUrl = getResolvedBaseUrl()
 
-        return try {
-            Retrofit.Builder()
-                .baseUrl(safeBaseUrl)
-                .client(okHttpClient)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build()
-        } catch (_: Exception) {
-            Retrofit.Builder()
-                .baseUrl("http://172.23.176.205/algoquest_backend/api/")
-                .client(okHttpClient)
-                .addConverterFactory(GsonConverterFactory.create())
-                .build()
-        }.also { retrofit = it }
+        return Retrofit.Builder()
+            .baseUrl(baseUrl)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .also { retrofit = it }
     }
 }

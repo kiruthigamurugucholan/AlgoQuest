@@ -102,31 +102,24 @@ class MainActivity : ComponentActivity() {
                         3 -> AiAllyScreen(onStart = { screen = 4 })
                         4 -> CreateAccountScreen(
                             authViewModel = authViewModel,
-                            onCreate = { name, email, password ->
-                                authViewModel.register(name, email, password) {
-                                    screen = 6
-                                }
+                            onCreate = { _, _, _ ->
+                                screen = 6
                             },
                             onLogin = { screen = 5 },
                             onGoogle = { screen = 6 }
                         )
                         5 -> LoginScreen(
                             authViewModel = authViewModel,
-                            onLogin = { email, password ->
-                                authViewModel.login(email, password) {
-                                    screen = 7
-                                }
+                            onLogin = { _, _ ->
+                                screen = 7
                             },
                             onGoogle = { screen = 7 },
                             onCreateAccount = { screen = 4 }
                         )
                         6 -> PersonalizeScreen(
                             authViewModel = authViewModel,
-                            onBuildPath = { goal, level, minutesPerDay ->
-                                val minutes = minutesPerDay.filter { it.isDigit() }.toIntOrNull() ?: 15
-                                authViewModel.personalize(goal, level, minutes) {
-                                    screen = 7
-                                }
+                            onBuildPath = { _, _, _ ->
+                                screen = 7
                             }
                         )
                         7 -> HomeScreen(

@@ -17,6 +17,9 @@ if not exist "C:\xampp\htdocs" (
 echo Syncing backend files to %DEST%...
 robocopy "%SRC%" "%DEST%" /E /XD .git tests /XF deploy_to_xampp.*
 
+copy /Y "%SRC%\.htaccess" "%DEST%\.htaccess" >nul 2>&1
+copy /Y "%SRC%\api\.htaccess" "%DEST%\api\.htaccess" >nul 2>&1
+
 echo.
 echo ========================================================
 echo   Backend deployed to: %DEST%

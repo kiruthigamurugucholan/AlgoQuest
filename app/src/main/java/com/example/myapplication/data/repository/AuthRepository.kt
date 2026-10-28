@@ -4,11 +4,14 @@ import android.content.Context
 import com.example.myapplication.data.model.request.LoginRequest
 import com.example.myapplication.data.model.request.PersonalizeRequest
 import com.example.myapplication.data.model.request.RegisterRequest
+import com.example.myapplication.data.model.response.ApiResponse
 import com.example.myapplication.data.model.response.AuthData
 import com.example.myapplication.data.model.response.UserDto
 import com.example.myapplication.data.remote.ApiService
 import com.example.myapplication.data.remote.RetrofitClient
 import com.example.myapplication.data.remote.TokenManager
+import com.google.gson.JsonParser
+import retrofit2.Response
 
 class AuthRepository(context: Context) {
     private val api: ApiService = RetrofitClient.getApiService(context)
@@ -22,17 +25,16 @@ class AuthRepository(context: Context) {
                 tokenManager.saveAuth(authData.token, authData.user)
                 Result.success(authData)
             } else {
-                val msg = response.body()?.message ?: "Registration failed"
-                val code = response.code()
-                if (code == 409 || msg.contains("exists", ignoreCase = true)) {
-                    Result.failure(Exception(msg))
-                } else {
-                    createLocalAuth(name, email)
-                }
+                val errorMsg = parseErrorMessage(response)
+                Result.failure(Exception(errorMsg))
             }
-        } catch (_: Exception) {
-            // Network connection error / timeout -> seamlessly save account locally
-            createLocalAuth(name, email)
+        } catch (e: Exception) {
+            val friendlyMsg = when (e) {
+                is java.net.ConnectException -> "Cannot connect to server. Ensure Apache and MySQL are running in XAMPP."
+                is java.net.SocketTimeoutException -> "Server connection timed out. Please check your network."
+                else -> e.localizedMessage ?: "Network error. Please try again."
+            }
+            Result.failure(Exception(friendlyMsg))
         }
     }
 
@@ -44,17 +46,16 @@ class AuthRepository(context: Context) {
                 tokenManager.saveAuth(authData.token, authData.user)
                 Result.success(authData)
             } else {
-                val msg = response.body()?.message ?: "Invalid email or password"
-                val code = response.code()
-                if (code == 401 || msg.contains("invalid", ignoreCase = true)) {
-                    Result.failure(Exception(msg))
-                } else {
-                    createLocalAuth(deriveNameFromEmail(email), email)
-                }
+                val errorMsg = parseErrorMessage(response)
+                Result.failure(Exception(errorMsg))
             }
-        } catch (_: Exception) {
-            // Network connection error / timeout -> seamlessly allow login
-            createLocalAuth(deriveNameFromEmail(email), email)
+        } catch (e: Exception) {
+            val friendlyMsg = when (e) {
+                is java.net.ConnectException -> "Cannot connect to server. Ensure Apache and MySQL are running in XAMPP."
+                is java.net.SocketTimeoutException -> "Server connection timed out. Please check your network."
+                else -> e.localizedMessage ?: "Network error. Please try again."
+            }
+            Result.failure(Exception(friendlyMsg))
         }
     }
 
@@ -68,54 +69,34 @@ class AuthRepository(context: Context) {
                 }
                 Result.success(Unit)
             } else {
-                updateLocalPreferences(goal, level, dailyMinutes)
+                val errorMsg = parseErrorMessage(response)
+                Result.failure(Exception(errorMsg))
             }
-        } catch (_: Exception) {
-            updateLocalPreferences(goal, level, dailyMinutes)
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 
-    private fun createLocalAuth(name: String, email: String): Result<AuthData> {
-        val user = UserDto(
-            id = (1..9999).random(),
-            name = if (name.isNotBlank()) name else "Kiruthiga",
-            email = email,
-            level = 8,
-            xp = 2450,
-            streak = 7,
-            goal = "Ace Interviews",
-            skillLevel = "Beginner",
-            dailyMinutes = 15
-        )
-        val authData = AuthData(
-            token = "algoquest_bearer_token",
-            expiresAt = "2099-12-31 23:59:59",
-            user = user
-        )
-        tokenManager.saveAuth(authData.token, authData.user)
-        return Result.success(authData)
-    }
-
-    private fun updateLocalPreferences(goal: String, level: String, dailyMinutes: Int): Result<Unit> {
-        val current = tokenManager.getUser() ?: UserDto(
-            id = 1,
-            name = "Kiruthiga",
-            email = "kiruthiga@gmail.com",
-            level = 8,
-            xp = 2450,
-            streak = 7,
-            goal = goal,
-            skillLevel = level,
-            dailyMinutes = dailyMinutes
-        )
-        val updated = current.copy(goal = goal, skillLevel = level, dailyMinutes = dailyMinutes)
-        tokenManager.saveAuth(tokenManager.getToken() ?: "bearer_token", updated)
-        return Result.success(Unit)
-    }
-
-    private fun deriveNameFromEmail(email: String): String {
-        val raw = email.substringBefore("@").replace(".", " ")
-        return if (raw.isBlank()) "Explorer" else raw.split(" ").joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+    private fun parseErrorMessage(response: Response<*>): String {
+        return try {
+            val errString = response.errorBody()?.string()
+            if (!errString.isNullOrBlank()) {
+                val element = JsonParser.parseString(errString)
+                if (element.isJsonObject) {
+                    val obj = element.asJsonObject
+                    if (obj.has("message") && !obj.get("message").isJsonNull) {
+                        return obj.get("message").asString
+                    }
+                }
+            }
+            val body = response.body() as? ApiResponse<*>
+            if (body?.message?.isNotBlank() == true) {
+                return body.message
+            }
+            "Server error (${response.code()})"
+        } catch (_: Exception) {
+            "Server error (${response.code()})"
+        }
     }
 
     suspend fun logout() {

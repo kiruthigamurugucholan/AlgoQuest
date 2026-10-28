@@ -57,12 +57,20 @@ class AuthController {
             ');
             $insertProfile->execute(['user_id' => $userId]);
 
-            // Assign today's daily quest (Quest ID 1)
-            $assignQuest = $db->prepare('
-                INSERT INTO user_quests (user_id, quest_id, current_step, is_completed, assigned_date)
-                VALUES (:user_id, 1, 0, FALSE, CURDATE())
-            ');
-            $assignQuest->execute(['user_id' => $userId]);
+            // Assign today's daily quest if quest table is seeded
+            try {
+                $defaultQuest = $db->query('SELECT id FROM quests LIMIT 1')->fetch();
+                if ($defaultQuest) {
+                    $assignQuest = $db->prepare('
+                        INSERT INTO user_quests (user_id, quest_id, current_step, is_completed, assigned_date)
+                        VALUES (:user_id, :quest_id, 0, FALSE, CURDATE())
+                    ');
+                    $assignQuest->execute([
+                        'user_id' => $userId,
+                        'quest_id' => (int)$defaultQuest['id']
+                    ]);
+                }
+            } catch (Throwable $ignored) {}
 
             // Generate secure bearer token
             $rawToken = bin2hex(random_bytes(32));
@@ -96,9 +104,12 @@ class AuthController {
                     'daily_minutes' => 15,
                 ]
             ], 201);
-        } catch (Exception $e) {
-            $db->rollBack();
-            Response::error('Failed to create account. Please try again.', ['server' => 'Registration error'], 500);
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            error_log('Registration error: ' . $e->getMessage());
+            Response::error('Failed to create account: ' . $e->getMessage(), ['server' => $e->getMessage()], 500);
         }
     }
 

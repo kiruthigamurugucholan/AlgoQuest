@@ -57,6 +57,13 @@ if (isset($_GET['route'])) {
     $uri = trim($_GET['route'], '/');
 }
 
+// Remove index.php prefix if present (e.g. /api/index.php/auth/register)
+if (str_starts_with($uri, 'index.php/')) {
+    $uri = substr($uri, 10);
+} elseif ($uri === 'index.php') {
+    $uri = '';
+}
+
 // Normalize /v1 prefix
 if (str_starts_with($uri, 'api/v1/')) {
     $path = substr($uri, 7);
