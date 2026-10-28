@@ -8,9 +8,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    // 10.0.2.2 is the special alias to host loopback (127.0.0.1) on Android Emulator.
-    // Change to PC LAN IP (e.g. http://192.168.1.100/algoquest_backend/api/) for physical device testing.
-    var baseUrl: String = "http://10.0.2.2/algoquest_backend/api/"
+    // PC LAN IP for physical device on 172.23.x.x network.
+    // Replace with http://10.0.2.2/algoquest_backend/api/ if testing on Android Emulator.
+    var baseUrl: String = "http://172.23.176.205/algoquest_backend/api/"
 
     private var retrofit: Retrofit? = null
     private var apiServiceInstance: ApiService? = null
@@ -42,16 +42,16 @@ object RetrofitClient {
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
-            .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(15, TimeUnit.SECONDS)
-            .writeTimeout(15, TimeUnit.SECONDS)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
             .build()
 
         val safeBaseUrl = try {
             val url = baseUrl.trim()
             if (url.endsWith("/")) url else "$url/"
         } catch (_: Exception) {
-            "http://10.0.2.2/algoquest_backend/api/"
+            "http://172.23.176.205/algoquest_backend/api/"
         }
 
         return try {
@@ -62,7 +62,7 @@ object RetrofitClient {
                 .build()
         } catch (_: Exception) {
             Retrofit.Builder()
-                .baseUrl("http://10.0.2.2/algoquest_backend/api/")
+                .baseUrl("http://172.23.176.205/algoquest_backend/api/")
                 .client(okHttpClient)
                 .addConverterFactory(GsonConverterFactory.create())
                 .build()
