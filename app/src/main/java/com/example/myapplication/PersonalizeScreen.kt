@@ -46,6 +46,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.viewmodel.AuthViewModel
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -88,6 +89,7 @@ private val commitments = listOf(
 
 @Composable
 fun PersonalizeScreen(
+    authViewModel: AuthViewModel? = null,
     onBuildPath: (goal: String, level: String, minutesPerDay: String) -> Unit = { _, _, _ -> }
 ) {
     var selectedGoal by rememberSaveable { mutableIntStateOf(0) }
@@ -276,11 +278,17 @@ fun PersonalizeScreen(
                 .clip(RoundedCornerShape(16.dp))
                 .background(Purple)
                 .clickable {
-                    onBuildPath(
-                        goals[selectedGoal].title,
-                        levels[selectedLevel],
-                        commitments[selectedTime].first
-                    )
+                    val goal = goals[selectedGoal].title
+                    val level = levels[selectedLevel]
+                    val timeStr = commitments[selectedTime].first
+                    val minutes = timeStr.replace(" min", "").toIntOrNull() ?: 15
+                    if (authViewModel != null) {
+                        authViewModel.personalize(goal, level, minutes) {
+                            onBuildPath(goal, level, timeStr)
+                        }
+                    } else {
+                        onBuildPath(goal, level, timeStr)
+                    }
                 },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
@@ -410,7 +418,7 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
         lineTo((cx + r) * d, cy * d)
         lineTo((cx + i) * d, (cy + i) * d)
         lineTo(cx * d, (cy + r) * d)
-        lineTo((cx - i) * d, (cy + i) * d)
+        lineTo((cx - i) * d, (cy - i) * d)
         lineTo((cx - r) * d, cy * d)
         lineTo((cx - i) * d, (cy - i) * d)
         close()
@@ -423,4 +431,3 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
 private fun PersonalizeScreenPreview() {
     PersonalizeScreen()
 }
-

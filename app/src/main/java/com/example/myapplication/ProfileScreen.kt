@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -22,10 +21,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
@@ -37,6 +38,12 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.data.model.response.AchievementDto
+import com.example.myapplication.data.model.response.ProfileData
+import com.example.myapplication.ui.components.ErrorRetryCard
+import com.example.myapplication.ui.components.LoadingIndicator
+import com.example.myapplication.viewmodel.ProfileUiState
+import com.example.myapplication.viewmodel.ProfileViewModel
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -56,27 +63,20 @@ private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
 private val Mono: FontFamily = FontFamily.Monospace
 
-data class AchievementBadge(
-    val title: String,
-    val description: String,
-    val iconEmoji: String,
-    val isUnlocked: Boolean
-)
-
 @Composable
 fun ProfileScreen(
+    viewModel: ProfileViewModel? = null,
     onBack: () -> Unit = {},
     onLogout: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    val achievements = listOf(
-        AchievementBadge("Streak Master", "Maintained 7-day streak", "🔥", true),
-        AchievementBadge("Binary Searcher", "Mastered Binary Search", "⚡", true),
-        AchievementBadge("AI Explorer", "Asked 10 questions to Quest AI", "🤖", true),
-        AchievementBadge("Array Legend", "Completed Array chapter", "🎯", true),
-        AchievementBadge("Graph Pioneer", "Unlock Chapter 07", "🔒", false),
-        AchievementBadge("DP Titan", "Unlock Chapter 08", "🔒", false)
-    )
+    LaunchedEffect(Unit) {
+        viewModel?.loadProfile()
+    }
+
+    val uiState by viewModel?.uiState?.collectAsState() ?: androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(ProfileUiState.Loading)
+    }
 
     Column(
         modifier = Modifier
@@ -84,151 +84,206 @@ fun ProfileScreen(
             .background(Bg)
             .statusBarsPadding()
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Top Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(CardBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-                            .clickable(onClick = onBack),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        IconCanvas(16.dp) { d -> drawChevronLeft(d) }
-                    }
-                    Text(
-                        text = "Explorer Profile",
-                        style = TextStyle(
-                            fontFamily = Poppins,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 18.sp,
-                            color = TextPrimary
-                        )
+            when (val state = uiState) {
+                is ProfileUiState.Loading -> {
+                    LoadingIndicator(text = "Loading your explorer profile...")
+                }
+                is ProfileUiState.Error -> {
+                    ErrorRetryCard(
+                        message = state.message,
+                        onRetry = { viewModel?.loadProfile() }
                     )
                 }
-                Badge("SETTINGS", CardBg, TextSecondary)
-            }
-
-            // Profile Identity Header
-            val profileShape = RoundedCornerShape(20.dp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(profileShape)
-                    .background(ActiveCardBg)
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), profileShape)
-                    .padding(20.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                // Avatar Circle
-                Box(
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Brush.linearGradient(listOf(PurpleLight, Purple, PurpleDark))
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "AM",
-                        style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Color.White)
+                is ProfileUiState.Success -> {
+                    ProfileContent(
+                        data = state.profile,
+                        onBack = onBack,
+                        onLogout = onLogout
                     )
                 }
-
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(text = "Alex Morgan", style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = TextPrimary))
-                    Text(text = "@alex_morgan · Joined October 2024", style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary))
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Badge("LVL 08 EXPLORER", Purple.copy(alpha = 0.15f), PurpleSoft)
-                    Badge("TOP 12% GLOBAL", Gold.copy(alpha = 0.12f), Gold)
-                }
-            }
-
-            // Stats Matrix
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                StatCard("7 🔥", "Day Streak", Gold, Modifier.weight(1f))
-                StatCard("2,450", "Total XP", Cyan, Modifier.weight(1f))
-                StatCard("14 🎯", "Lessons Solved", Green, Modifier.weight(1f))
-            }
-
-            // Skill Mastery Breakdown
-            SectionTitle("Skill Mastery")
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                SkillBar("Array & Two Pointers", 0.92f, "92%", Green)
-                SkillBar("Searching Algorithms", 0.85f, "85%", Cyan)
-                SkillBar("Sorting Algorithms", 0.60f, "60%", Gold)
-                SkillBar("Trees & Binary Trees", 0.25f, "25%", PurpleSoft)
-            }
-
-            // Badges Grid
-            SectionTitle("Achievements & Badges")
-
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    BadgeItem(achievements[0], Modifier.weight(1f))
-                    BadgeItem(achievements[1], Modifier.weight(1f))
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    BadgeItem(achievements[2], Modifier.weight(1f))
-                    BadgeItem(achievements[3], Modifier.weight(1f))
-                }
-            }
-
-            // Logout Button
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(CardBg)
-                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
-                    .clickable(onClick = onLogout),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(text = "Log out", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TextMuted))
             }
         }
 
         // Shared Bottom Navigation Bar
         AlgoQuestBottomBar(selectedTab = 4, onSelectTab = onSelectTab)
+    }
+}
+
+@Composable
+private fun ProfileContent(
+    data: ProfileData,
+    onBack: () -> Unit,
+    onLogout: () -> Unit
+) {
+    val user = data.user
+    val skills = data.skills
+    val achievements = data.achievements
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // Top Header
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(CardBg)
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                        .clickable(onClick = onBack),
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconCanvas(16.dp) { d -> drawChevronLeft(d) }
+                }
+                Text(
+                    text = "Explorer Profile",
+                    style = TextStyle(
+                        fontFamily = Poppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp,
+                        color = TextPrimary
+                    )
+                )
+            }
+            Badge("SETTINGS", CardBg, TextSecondary)
+        }
+
+        // Profile Identity Header
+        val profileShape = RoundedCornerShape(20.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(profileShape)
+                .background(ActiveCardBg)
+                .border(1.dp, Color.White.copy(alpha = 0.08f), profileShape)
+                .padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Avatar Circle
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(listOf(PurpleLight, Purple, PurpleDark))
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = user.initials.ifBlank { "AQ" },
+                    style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.Bold, fontSize = 26.sp, color = Color.White)
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = user.name,
+                    style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = TextPrimary)
+                )
+                Text(
+                    text = "${user.email} · Joined ${user.joined}",
+                    style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary)
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Badge("LVL ${user.level.toString().padStart(2, '0')} EXPLORER", Purple.copy(alpha = 0.15f), PurpleSoft)
+                Badge("TOP ${user.percentile} GLOBAL", Gold.copy(alpha = 0.12f), Gold)
+            }
+        }
+
+        // Stats Matrix
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            StatCard("${user.streak} 🔥", "Day Streak", Gold, Modifier.weight(1f))
+            StatCard("${user.xp}", "Total XP", Cyan, Modifier.weight(1f))
+            StatCard("${user.solvedLessons} 🎯", "Lessons Solved", Green, Modifier.weight(1f))
+        }
+
+        // Skill Mastery Breakdown
+        SectionTitle("Skill Mastery")
+
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            skills.forEachIndexed { idx, skill ->
+                val barColor = when (skill.colorTag.lowercase()) {
+                    "green" -> Green
+                    "cyan" -> Cyan
+                    "gold" -> Gold
+                    "purple" -> PurpleSoft
+                    else -> when (idx % 4) {
+                        0 -> Green
+                        1 -> Cyan
+                        2 -> Gold
+                        else -> PurpleSoft
+                    }
+                }
+                SkillBar(skill.title, skill.progress, skill.percent, barColor)
+            }
+        }
+
+        // Badges Grid
+        SectionTitle("Achievements & Badges")
+
+        val chunkedBadges = achievements.chunked(2)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            chunkedBadges.forEach { rowBadges ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    rowBadges.forEach { badge ->
+                        BadgeItem(badge, Modifier.weight(1f))
+                    }
+                    if (rowBadges.size == 1) {
+                        Box(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        // Logout Button
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(CardBg)
+                .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
+                .clickable(onClick = onLogout),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Log out",
+                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TextMuted)
+            )
+        }
     }
 }
 
@@ -277,7 +332,7 @@ private fun SkillBar(title: String, progress: Float, percent: String, color: Col
         ) {
             Box(
                 Modifier
-                    .fillMaxWidth(progress)
+                    .fillMaxWidth(progress.coerceIn(0f, 1f))
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(4.dp))
                     .background(color)
@@ -287,7 +342,7 @@ private fun SkillBar(title: String, progress: Float, percent: String, color: Col
 }
 
 @Composable
-private fun BadgeItem(badge: AchievementBadge, modifier: Modifier = Modifier) {
+private fun BadgeItem(badge: AchievementDto, modifier: Modifier = Modifier) {
     val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = modifier
@@ -305,7 +360,10 @@ private fun BadgeItem(badge: AchievementBadge, modifier: Modifier = Modifier) {
                 .background(if (badge.isUnlocked) Purple.copy(alpha = 0.2f) else CardBg),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = badge.iconEmoji, style = TextStyle(fontSize = 16.sp))
+            Text(
+                text = if (badge.isUnlocked) badge.iconEmoji else "🔒",
+                style = TextStyle(fontSize = 16.sp)
+            )
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
@@ -359,8 +417,8 @@ private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
 
 private fun DrawScope.drawChevronLeft(d: Float) {
     val w = 1.8f * d
-    drawLine(TextPrimary, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
-    drawLine(TextPrimary, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
+    drawLine(TextPrimary, androidx.compose.ui.geometry.Offset(11f * d, 4f * d), androidx.compose.ui.geometry.Offset(5f * d, 10f * d), w, StrokeCap.Round)
+    drawLine(TextPrimary, androidx.compose.ui.geometry.Offset(5f * d, 10f * d), androidx.compose.ui.geometry.Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)

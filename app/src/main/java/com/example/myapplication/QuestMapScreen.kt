@@ -22,6 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +43,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.viewmodel.LearningViewModel
+import com.example.myapplication.viewmodel.TopicsUiState
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -71,18 +76,56 @@ data class QuestNode(
 
 @Composable
 fun QuestMapScreen(
+    learningViewModel: LearningViewModel? = null,
     onBack: () -> Unit = {},
     onSelectChapter: (chapterId: Int) -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    val nodes = listOf(
-        QuestNode(1, "Arrays & Memory", "Chapter 01", "4/4 Lessons", "+100 XP", NodeStatus.COMPLETED) { d -> drawArrayIcon(d) },
-        QuestNode(2, "Two Pointers & Sliding", "Chapter 02", "5/5 Lessons", "+150 XP", NodeStatus.COMPLETED) { d -> drawPointerIcon(d) },
-        QuestNode(3, "Searching Algorithms", "Chapter 03", "2/5 Lessons", "+200 XP", NodeStatus.ACTIVE) { d -> drawSearchIcon(d) },
-        QuestNode(4, "Sorting & Divide/Conquer", "Chapter 04", "0/5 Lessons", "+250 XP", NodeStatus.NEXT) { d -> drawSortIcon(d) },
-        QuestNode(5, "Linked Lists & Pointers", "Chapter 05", "Locked", "+300 XP", NodeStatus.LOCKED) { d -> drawLinkIcon(d) },
-        QuestNode(6, "Trees & Binary Trees", "Chapter 06", "Locked", "+350 XP", NodeStatus.LOCKED) { d -> drawTreeIcon(d) },
-        QuestNode(7, "Graphs & BFS / DFS", "Chapter 07", "Locked", "+400 XP", NodeStatus.LOCKED) { d -> drawGraphIcon(d) }
+    LaunchedEffect(Unit) {
+        learningViewModel?.loadTopics()
+    }
+
+    val topicsState by learningViewModel?.topicsState?.collectAsState() ?: androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(null)
+    }
+
+    val dynamicTopics = (topicsState as? TopicsUiState.Success)?.topics
+
+    fun getIconForType(type: String): DrawScope.(Float) -> Unit = when (type) {
+        "array" -> { d -> drawArrayIcon(d) }
+        "pointer" -> { d -> drawPointerIcon(d) }
+        "search" -> { d -> drawSearchIcon(d) }
+        "sort" -> { d -> drawSortIcon(d) }
+        "link" -> { d -> drawLinkIcon(d) }
+        "tree" -> { d -> drawTreeIcon(d) }
+        else -> { d -> drawGraphIcon(d) }
+    }
+
+    fun parseStatus(s: String): NodeStatus = when (s.uppercase()) {
+        "COMPLETED" -> NodeStatus.COMPLETED
+        "ACTIVE" -> NodeStatus.ACTIVE
+        "NEXT" -> NodeStatus.NEXT
+        else -> NodeStatus.LOCKED
+    }
+
+    val nodes = dynamicTopics?.map { dt ->
+        QuestNode(
+            id = dt.id,
+            title = dt.title,
+            chapter = dt.chapterLabel,
+            lessons = dt.lessonsLabel,
+            xp = "+${dt.totalXp} XP",
+            status = parseStatus(dt.status),
+            icon = getIconForType(dt.iconType)
+        )
+    } ?: listOf(
+        QuestNode(1, "Arrays & Memory", "Chapter 01", "4/4 Lessons", "+400 XP", NodeStatus.COMPLETED) { d -> drawArrayIcon(d) },
+        QuestNode(2, "Two Pointers & Sliding", "Chapter 02", "5/5 Lessons", "+500 XP", NodeStatus.COMPLETED) { d -> drawPointerIcon(d) },
+        QuestNode(3, "Searching Algorithms", "Chapter 03", "2/5 Lessons", "+900 XP", NodeStatus.ACTIVE) { d -> drawSearchIcon(d) },
+        QuestNode(4, "Sorting & Divide/Conquer", "Chapter 04", "0/5 Lessons", "+650 XP", NodeStatus.NEXT) { d -> drawSortIcon(d) },
+        QuestNode(5, "Linked Lists & Pointers", "Chapter 05", "Locked", "+700 XP", NodeStatus.LOCKED) { d -> drawLinkIcon(d) },
+        QuestNode(6, "Trees & Binary Trees", "Chapter 06", "Locked", "+800 XP", NodeStatus.LOCKED) { d -> drawTreeIcon(d) },
+        QuestNode(7, "Graphs & BFS / DFS", "Chapter 07", "Locked", "+1000 XP", NodeStatus.LOCKED) { d -> drawGraphIcon(d) }
     )
 
     Column(
@@ -136,7 +179,7 @@ fun QuestMapScreen(
                         )
                     }
                 }
-                Badge("2,450 XP", Gold.copy(alpha = 0.12f), Gold)
+                Badge("LIVE SYLLABUS", Gold.copy(alpha = 0.12f), Gold)
             }
 
             // Active Chapter Banner
@@ -147,6 +190,7 @@ fun QuestMapScreen(
                     .clip(bannerShape)
                     .background(ActiveCardBg)
                     .border(1.dp, Purple.copy(alpha = 0.4f), bannerShape)
+                    .clickable { onSelectChapter(3) }
                     .padding(16.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -170,7 +214,7 @@ fun QuestMapScreen(
                         style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, color = TextPrimary)
                     )
                     Text(
-                        text = "Master Binary Search & Ternary Search",
+                        text = "Master Binary Search & Divide and Conquer",
                         style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary)
                     )
                 }
@@ -218,7 +262,6 @@ private fun RoadmapNodeItem(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.width(36.dp)
         ) {
-            // Node icon bubble
             val circleColor = when (node.status) {
                 NodeStatus.COMPLETED -> Green
                 NodeStatus.ACTIVE -> Purple
@@ -299,49 +342,31 @@ private fun RoadmapNodeItem(
                 ) {
                     Text(
                         text = node.chapter,
-                        style = TextStyle(fontFamily = Mono, fontSize = 10.sp, color = TextMuted)
+                        style = TextStyle(fontFamily = Mono, fontSize = 11.sp, color = PurpleSoft)
                     )
-                    Badge(
-                        text = when (node.status) {
-                            NodeStatus.COMPLETED -> "COMPLETED"
-                            NodeStatus.ACTIVE -> "IN PROGRESS"
-                            NodeStatus.NEXT -> "READY"
-                            NodeStatus.LOCKED -> "LOCKED"
-                        },
-                        background = when (node.status) {
-                            NodeStatus.COMPLETED -> Green.copy(alpha = 0.1f)
-                            NodeStatus.ACTIVE -> Purple.copy(alpha = 0.15f)
-                            NodeStatus.NEXT -> Cyan.copy(alpha = 0.1f)
-                            NodeStatus.LOCKED -> CardBg
-                        },
-                        textColor = when (node.status) {
-                            NodeStatus.COMPLETED -> Green
-                            NodeStatus.ACTIVE -> PurpleSoft
-                            NodeStatus.NEXT -> Cyan
-                            NodeStatus.LOCKED -> TextMuted
-                        }
+                    Text(
+                        text = node.lessons,
+                        style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextMuted)
                     )
                 }
-
                 Text(
                     text = node.title,
                     style = TextStyle(
-                        fontFamily = Inter,
+                        fontFamily = Poppins,
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
                         color = if (node.status == NodeStatus.LOCKED) TextMuted else TextPrimary
                     )
                 )
-
-                Text(
-                    text = "${node.lessons} · ${node.xp}",
-                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+            }
+            Text(
+                text = node.xp,
+                style = TextStyle(
+                    fontFamily = Mono,
+                    fontSize = 11.sp,
+                    color = if (node.status == NodeStatus.LOCKED) TextMuted.copy(alpha = 0.4f) else Gold
                 )
-            }
-
-            if (node.status != NodeStatus.LOCKED) {
-                IconCanvas(16.dp) { d -> drawChevronRight(d) }
-            }
+            )
         }
     }
 }
@@ -350,15 +375,20 @@ private fun RoadmapNodeItem(
 private fun Badge(text: String, background: Color, textColor: Color) {
     Box(
         modifier = Modifier
-            .height(22.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .height(26.dp)
+            .clip(RoundedCornerShape(8.dp))
             .background(background)
-            .padding(horizontal = 7.dp),
+            .padding(horizontal = 9.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             text = text,
-            style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 9.sp, color = textColor)
+            style = TextStyle(
+                fontFamily = Inter,
+                fontWeight = FontWeight.Medium,
+                fontSize = 11.sp,
+                color = textColor
+            )
         )
     }
 }
@@ -379,22 +409,16 @@ private fun DrawScope.drawChevronLeft(d: Float) {
     drawLine(TextPrimary, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
-private fun DrawScope.drawChevronRight(d: Float) {
-    val w = 1.6f * d
-    drawLine(TextSecondary, Offset(5f * d, 3f * d), Offset(10f * d, 8f * d), w, StrokeCap.Round)
-    drawLine(TextSecondary, Offset(10f * d, 8f * d), Offset(5f * d, 13f * d), w, StrokeCap.Round)
-}
-
 private fun DrawScope.drawCheck(d: Float) {
     val w = 2f * d
     drawLine(Green, Offset(4f * d, 9f * d), Offset(7f * d, 12f * d), w, StrokeCap.Round)
-    drawLine(Green, Offset(7f * d, 12f * d), Offset(13f * d, 5f * d), w, StrokeCap.Round)
+    drawLine(Green, Offset(7f * d, 12f * d), Offset(12f * d, 4f * d), w, StrokeCap.Round)
 }
 
 private fun DrawScope.drawLock(d: Float) {
     val c = TextMuted
-    drawArc(c, 180f, 180f, false, Offset(4f * d, 2f * d), Size(6f * d, 6f * d), style = lineStroke(d))
-    drawRect(c, Offset(3f * d, 7f * d), Size(8f * d, 6f * d), style = lineStroke(d))
+    drawRect(c, Offset(4f * d, 7f * d), Size(8f * d, 6f * d), style = lineStroke(d, 1.2f))
+    drawArc(c, 180f, 180f, false, Offset(5f * d, 3f * d), Size(6f * d, 6f * d), style = lineStroke(d, 1.2f))
 }
 
 private fun DrawScope.drawArrayIcon(d: Float) {

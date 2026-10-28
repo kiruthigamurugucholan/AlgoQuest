@@ -23,8 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +55,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.viewmodel.AuthUiState
+import com.example.myapplication.viewmodel.AuthViewModel
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -76,6 +80,7 @@ private val Inter: FontFamily = FontFamily.SansSerif
 
 @Composable
 fun CreateAccountScreen(
+    authViewModel: AuthViewModel? = null,
     onCreate: (name: String, email: String, password: String) -> Unit = { _, _, _ -> },
     onLogin: () -> Unit = {},
     onGoogle: () -> Unit = {},
@@ -88,7 +93,11 @@ fun CreateAccountScreen(
     var email by remember { mutableStateOf(initialEmail) }
     var password by remember { mutableStateOf(initialPassword) }
     var agreed by remember { mutableStateOf(initialAgreed) }
-    var error by remember { mutableStateOf("") }
+    var localError by remember { mutableStateOf("") }
+
+    val authState by authViewModel?.uiState?.collectAsState() ?: remember { mutableStateOf(AuthUiState.Idle) }
+    val isLoading = authState is AuthUiState.Loading
+    val serverError = (authState as? AuthUiState.Error)?.message
 
     Column(
         modifier = Modifier
@@ -137,7 +146,7 @@ fun CreateAccountScreen(
         FormField(
             label = "Your name",
             value = name,
-            onValueChange = { name = it },
+            onValueChange = { name = it; localError = "" },
             placeholder = "Alex Morgan",
             icon = { d -> drawUser(d) },
             keyboardType = KeyboardType.Text
@@ -145,7 +154,7 @@ fun CreateAccountScreen(
         FormField(
             label = "Email address",
             value = email,
-            onValueChange = { email = it },
+            onValueChange = { email = it; localError = "" },
             placeholder = "alex.morgan@email.com",
             icon = { d -> drawMail(d) },
             keyboardType = KeyboardType.Email
@@ -153,7 +162,7 @@ fun CreateAccountScreen(
         FormField(
             label = "Password",
             value = password,
-            onValueChange = { password = it },
+            onValueChange = { password = it; localError = "" },
             placeholder = "At least 8 characters",
             icon = { d -> drawLock(d) },
             keyboardType = KeyboardType.Password,
@@ -210,9 +219,10 @@ fun CreateAccountScreen(
             )
         }
 
-        if (error.isNotEmpty()) {
+        val displayError = localError.ifEmpty { serverError ?: "" }
+        if (displayError.isNotEmpty()) {
             Text(
-                text = error,
+                text = displayError,
                 style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = Pink)
             )
         }
@@ -223,9 +233,9 @@ fun CreateAccountScreen(
                 .fillMaxWidth()
                 .height(48.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Purple)
-                .clickable {
-                    error = when {
+                .background(if (isLoading) Purple.copy(alpha = 0.5f) else Purple)
+                .clickable(enabled = !isLoading) {
+                    localError = when {
                         name.isBlank() -> "Please enter your name."
                         !email.contains("@") || !email.contains(".") ->
                             "Please enter a valid email address."
@@ -233,22 +243,39 @@ fun CreateAccountScreen(
                         !agreed -> "Please accept the Terms of Service and Privacy Policy."
                         else -> ""
                     }
-                    if (error.isEmpty()) onCreate(name.trim(), email.trim(), password)
+                    if (localError.isEmpty()) {
+                        if (authViewModel != null) {
+                            authViewModel.register(name.trim(), email.trim(), password) {
+                                onCreate(name.trim(), email.trim(), password)
+                            }
+                        } else {
+                            onCreate(name.trim(), email.trim(), password)
+                        }
+                    }
                 },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconCanvas(18.dp) { d -> drawArrowRight(d) }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Create account",
-                style = TextStyle(
-                    fontFamily = Inter,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp,
-                    color = Color.White
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "Creating account...",
+                    style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 15.sp, color = Color.White)
                 )
-            )
+            } else {
+                IconCanvas(18.dp) { d -> drawArrowRight(d) }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Create account",
+                    style = TextStyle(
+                        fontFamily = Inter,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                )
+            }
         }
 
         // Divider
@@ -490,4 +517,3 @@ private fun CreateAccountScreenPreview() {
         initialAgreed = true
     )
 }
-

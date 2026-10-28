@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -23,6 +22,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +43,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.viewmodel.DashboardUiState
+import com.example.myapplication.viewmodel.DashboardViewModel
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -59,6 +63,7 @@ private val Mono: FontFamily = FontFamily.Monospace
 
 @Composable
 fun HomeScreen(
+    dashboardViewModel: DashboardViewModel? = null,
     onContinueQuest: () -> Unit = {},
     onQuestMap: () -> Unit = {},
     onOpenChapter: () -> Unit = {},
@@ -67,6 +72,34 @@ fun HomeScreen(
     onOpenVisualizer: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
+    LaunchedEffect(Unit) {
+        dashboardViewModel?.loadDashboard()
+    }
+
+    val uiState by dashboardViewModel?.uiState?.collectAsState() ?: androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(null)
+    }
+
+    val dashboardData = (uiState as? DashboardUiState.Success)?.data
+
+    val userName = dashboardData?.user?.name ?: "Explorer"
+    val userLevel = dashboardData?.user?.level ?: 8
+    val userStreak = dashboardData?.user?.streak ?: 7
+    val userXp = dashboardData?.user?.xp?.let { String.format("%,d", it) } ?: "2,450"
+    val percentile = dashboardData?.user?.percentile ?: "top 12%"
+
+    val questTitle = dashboardData?.dailyQuest?.title ?: "Find it. Faster."
+    val questDesc = dashboardData?.dailyQuest?.description ?: "Master binary search, visualize the logic,\nthen put your instincts to the test."
+    val questXp = dashboardData?.dailyQuest?.xpReward ?: 150
+    val questStep = dashboardData?.dailyQuest?.currentStep ?: 1
+    val questTotalSteps = dashboardData?.dailyQuest?.requiredSteps ?: 3
+    val questProgress = (questStep.toFloat() / questTotalSteps.toFloat()).coerceIn(0.1f, 1f)
+
+    val activeTopicTitle = dashboardData?.activeTopic?.title ?: "Searching algorithms"
+    val activeTopicCompleted = dashboardData?.activeTopic?.completedLessons ?: 2
+    val activeTopicTotal = dashboardData?.activeTopic?.totalLessons ?: 5
+    val activeTopicSubtitle = "Chapter 03 · $activeTopicCompleted of $activeTopicTotal lessons complete"
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -88,13 +121,13 @@ fun HomeScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "A little better than yesterday.",
-                    style = TextStyle(fontFamily = Inter, fontSize = 14.sp, color = TextSecondary)
+                    text = "Welcome back, $userName.",
+                    style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TextSecondary)
                 )
                 Box(
                     modifier = Modifier.clickable(onClick = onOpenProfile)
                 ) {
-                    Badge("LVL 08", Purple.copy(alpha = 0.09f), PurpleSoft)
+                    Badge(String.format("LVL %02d", userLevel), Purple.copy(alpha = 0.09f), PurpleSoft)
                 }
             }
 
@@ -103,8 +136,8 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                MetricCard("7 🔥", "day streak", Gold, Modifier.weight(1f).clickable(onClick = onOpenProfile))
-                MetricCard("2,450", "total XP · top 12%", Cyan, Modifier.weight(1f).clickable(onClick = onOpenProfile))
+                MetricCard("$userStreak 🔥", "day streak", Gold, Modifier.weight(1f).clickable(onClick = onOpenProfile))
+                MetricCard(userXp, "total XP · $percentile", Cyan, Modifier.weight(1f).clickable(onClick = onOpenProfile))
             }
 
             // Daily quest card
@@ -125,12 +158,12 @@ fun HomeScreen(
                 ) {
                     Badge("DAILY QUEST", Purple.copy(alpha = 0.09f), PurpleSoft)
                     Text(
-                        text = "+150 XP",
+                        text = "+$questXp XP",
                         style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold)
                     )
                 }
                 Text(
-                    text = "Find it. Faster.",
+                    text = questTitle,
                     style = TextStyle(
                         fontFamily = Poppins,
                         fontWeight = FontWeight.SemiBold,
@@ -140,7 +173,7 @@ fun HomeScreen(
                     )
                 )
                 Text(
-                    text = "Master binary search, visualize the logic,\nthen put your instincts to the test.",
+                    text = questDesc,
                     style = TextStyle(
                         fontFamily = Inter,
                         fontSize = 13.sp,
@@ -157,7 +190,7 @@ fun HomeScreen(
                 ) {
                     Box(
                         Modifier
-                            .fillMaxWidth(0.33f)
+                            .fillMaxWidth(questProgress)
                             .fillMaxHeight()
                             .clip(RoundedCornerShape(4.dp))
                             .background(Purple)
@@ -168,7 +201,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = "1 of 3 steps complete",
+                        text = "$questStep of $questTotalSteps steps complete",
                         style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
                     )
                     Text(
@@ -228,8 +261,8 @@ fun HomeScreen(
             }
 
             PathCard(
-                title = "Searching algorithms",
-                subtitle = "Chapter 03 · 2 of 5 lessons complete",
+                title = activeTopicTitle,
+                subtitle = activeTopicSubtitle,
                 tileColor = Cyan.copy(alpha = 0.11f),
                 onClick = onOpenChapter
             ) { d -> drawScanSearch(d) }
@@ -413,6 +446,8 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
         lineTo((cx + r) * d, cy * d)
         lineTo((cx + i) * d, (cy + i) * d)
         lineTo(cx * d, (cy + r) * d)
+        lineTo((cx - i) * d, (cy - i) * d)
+        lineTo((cx - r) * d, cy * d)
         lineTo((cx - i) * d, (cy - i) * d)
         close()
     }

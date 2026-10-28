@@ -1,5 +1,9 @@
 package com.example.myapplication
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -13,7 +17,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -27,8 +30,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,6 +47,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -51,9 +55,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.MainScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.example.myapplication.data.model.response.AiMessageDto
+import com.example.myapplication.viewmodel.AiChatViewModel
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -65,7 +68,6 @@ private val PurpleLight = Color(0xFFA29BFE)
 private val PurpleDark = Color(0xFF5B4BD5)
 private val PurpleSoft = Color(0xFFB5A7FF)
 private val Green = Color(0xFF2ECC71)
-private val Gold = Color(0xFFFFB84D)
 private val CardBg = Color(0xFF1A1F36)
 private val AiBubbleBg = Color(0xFF24213F)
 private val UserBubbleBg = Color(0xFF6C5CE7)
@@ -76,47 +78,33 @@ private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
 private val Mono: FontFamily = FontFamily.Monospace
 
-data class ChatMessage(
-    val id: String,
-    val sender: String, // "user" or "ai"
-    val text: String,
-    val codeSnippet: String? = null,
-    val timestamp: String = "Just now",
-    val tags: List<String> = emptyList()
-)
-
 @Composable
 fun QuestAiChatScreen(
+    viewModel: AiChatViewModel? = null,
     onBack: () -> Unit = {},
     initialQuery: String = "",
     onSelectTab: (Int) -> Unit = {}
 ) {
-    val messages = remember {
-        mutableStateListOf(
-            ChatMessage(
-                id = "1",
-                sender = "ai",
-                text = "Hey Alex! I'm Quest AI, your personal Data Structures & Algorithms ally.\n\nAsk me anything — from binary search intuition to complex graph traversal algorithms!",
-                tags = listOf("AI Tutor", "DSA Ready")
-            )
-        )
+    val context = LocalContext.current
+    val vm = viewModel ?: remember {
+        AiChatViewModel(context.applicationContext as android.app.Application)
     }
-
-    var inputText by remember { mutableStateOf(initialQuery) }
-    var isThinking by remember { mutableStateOf(false) }
+    val uiState by vm.uiState.collectAsState()
     val listState = rememberLazyListState()
+    var inputText by remember { mutableStateOf(initialQuery) }
 
-    // Process initial query if provided
-    LaunchedEffect(initialQuery) {
-        if (initialQuery.isNotBlank() && messages.none { it.text == initialQuery }) {
-            sendMessage(initialQuery, messages, onThinkingChange = { isThinking = it })
+    // Load initial history or fire initial query
+    LaunchedEffect(Unit) {
+        vm.loadHistory()
+        if (initialQuery.isNotBlank()) {
+            vm.sendMessage(initialQuery)
         }
     }
 
     // Scroll to bottom on new message
-    LaunchedEffect(messages.size) {
-        if (messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+    LaunchedEffect(uiState.messages.size, uiState.isThinking) {
+        if (uiState.messages.isNotEmpty()) {
+            listState.animateScrollToItem(uiState.messages.size - 1)
         }
     }
 
@@ -172,7 +160,7 @@ fun QuestAiChatScreen(
                                 .background(Green)
                         )
                         Text(
-                            text = "Online · Always ready",
+                            text = "Online · REST Engine",
                             style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
                         )
                     }
@@ -225,15 +213,20 @@ fun QuestAiChatScreen(
                 .padding(horizontal = 20.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(messages, key = { it.id }) { msg ->
+            items(uiState.messages, key = { it.id }) { msg ->
                 if (msg.sender == "user") {
                     UserMessageItem(msg)
                 } else {
-                    AiMessageItem(msg)
+                    AiMessageItem(msg, onCopy = { snippet ->
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        val clip = ClipData.newPlainText("AlgoQuest Code", snippet)
+                        clipboard.setPrimaryClip(clip)
+                        Toast.makeText(context, "Code copied to clipboard!", Toast.LENGTH_SHORT).show()
+                    })
                 }
             }
 
-            if (isThinking) {
+            if (uiState.isThinking) {
                 item {
                     ThinkingIndicator()
                 }
@@ -281,11 +274,11 @@ fun QuestAiChatScreen(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(RoundedCornerShape(16.dp))
-                    .background(if (inputText.isNotBlank()) Purple else Purple.copy(alpha = 0.4f))
-                    .clickable(enabled = inputText.isNotBlank() && !isThinking) {
+                    .background(if (inputText.isNotBlank() && !uiState.isThinking) Purple else Purple.copy(alpha = 0.4f))
+                    .clickable(enabled = inputText.isNotBlank() && !uiState.isThinking) {
                         val query = inputText.trim()
                         inputText = ""
-                        sendMessage(query, messages, onThinkingChange = { isThinking = it })
+                        vm.sendMessage(query)
                     },
                 contentAlignment = Alignment.Center
             ) {
@@ -298,52 +291,8 @@ fun QuestAiChatScreen(
     }
 }
 
-private fun sendMessage(
-    query: String,
-    messages: MutableList<ChatMessage>,
-    onThinkingChange: (Boolean) -> Unit
-) {
-    messages.add(ChatMessage(id = System.currentTimeMillis().toString(), sender = "user", text = query))
-    onThinkingChange(true)
-
-    // Simulate AI response logic
-    val lower = query.lowercase()
-    val (aiText, code, tags) = when {
-        lower.contains("binary search") -> Triple(
-            "Binary search works by repeatedly dividing in half the portion of the list that could contain the item.\n\nKey intuition: If the array is sorted, comparing the middle item eliminates 50% of remaining items instantly!",
-            "fun binarySearch(arr: IntArray, target: Int): Int {\n    var low = 0; var high = arr.size - 1\n    while (low <= high) {\n        val mid = low + (high - low) / 2\n        if (arr[mid] == target) return mid\n        else if (arr[mid] < target) low = mid + 1\n        else high = mid - 1\n    }\n    return -1\n}",
-            listOf("O(log N)", "Divide & Conquer")
-        )
-        lower.contains("log") || lower.contains("complexity") -> Triple(
-            "O(log N) means log base 2 of N steps. For 1,000,000 items, binary search takes AT MOST 20 comparisons!\n\nFormula: 2^k = N -> k = log2(N)",
-            "1,000 items   -> ~10 steps\n1,000,000     -> ~20 steps\n1,000,000,000 -> ~30 steps",
-            listOf("Complexity", "Mathematics")
-        )
-        else -> Triple(
-            "Great question! In algorithm design, we focus on identifying the underlying structure — whether it's linear scanning, divide & conquer, or dynamic programming.\n\nWould you like me to visualize this step-by-step for you?",
-            null,
-            listOf("Quest AI", "Concept breakdown")
-        )
-    }
-
-    // Delayed response simulation
-    MainScope().launch {
-        delay(1200)
-        onThinkingChange(false)
-        messages.add(
-            ChatMessage(
-                id = (System.currentTimeMillis() + 1).toString(),
-                sender = "ai",
-                text = aiText,
-                codeSnippet = code,
-                tags = tags
-            )
-        )
-    }
-}
-
 @Composable
-private fun UserMessageItem(msg: ChatMessage) {
+private fun UserMessageItem(msg: AiMessageDto) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.End
@@ -364,7 +313,10 @@ private fun UserMessageItem(msg: ChatMessage) {
 }
 
 @Composable
-private fun AiMessageItem(msg: ChatMessage) {
+private fun AiMessageItem(
+    msg: AiMessageDto,
+    onCopy: (String) -> Unit = {}
+) {
     val cardShape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 4.dp, bottomEnd = 16.dp)
     Column(
         modifier = Modifier
@@ -395,14 +347,30 @@ private fun AiMessageItem(msg: ChatMessage) {
         )
 
         msg.codeSnippet?.let { code ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(CodeBg)
                     .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
-                    .padding(12.dp)
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Kotlin Snippet",
+                        style = TextStyle(fontFamily = Mono, fontSize = 10.sp, color = TextMuted)
+                    )
+                    Text(
+                        text = "Tap to Copy",
+                        modifier = Modifier.clickable { onCopy(code) },
+                        style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = PurpleSoft, fontWeight = FontWeight.SemiBold)
+                    )
+                }
                 Text(
                     text = code,
                     style = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 18.sp, color = Cyan)

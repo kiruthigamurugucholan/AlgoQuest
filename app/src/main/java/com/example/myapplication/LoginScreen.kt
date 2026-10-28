@@ -23,8 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +56,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.viewmodel.AuthUiState
+import com.example.myapplication.viewmodel.AuthViewModel
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -78,6 +82,7 @@ private val Inter: FontFamily = FontFamily.SansSerif
 
 @Composable
 fun LoginScreen(
+    authViewModel: AuthViewModel? = null,
     onLogin: (email: String, password: String) -> Unit = { _, _ -> },
     onForgotPassword: () -> Unit = {},
     onGoogle: () -> Unit = {},
@@ -88,7 +93,11 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf(initialEmail) }
     var password by remember { mutableStateOf(initialPassword) }
-    var error by remember { mutableStateOf("") }
+    var localError by remember { mutableStateOf("") }
+
+    val authState by authViewModel?.uiState?.collectAsState() ?: remember { mutableStateOf(AuthUiState.Idle) }
+    val isLoading = authState is AuthUiState.Loading
+    val serverError = (authState as? AuthUiState.Error)?.message
 
     Column(
         modifier = Modifier
@@ -127,7 +136,7 @@ fun LoginScreen(
         FormField(
             label = "Email address",
             value = email,
-            onValueChange = { email = it },
+            onValueChange = { email = it; localError = "" },
             placeholder = "alex.morgan@email.com",
             icon = { d -> drawMail(d) },
             keyboardType = KeyboardType.Email
@@ -135,7 +144,7 @@ fun LoginScreen(
         FormField(
             label = "Password",
             value = password,
-            onValueChange = { password = it },
+            onValueChange = { password = it; localError = "" },
             placeholder = "Enter your password",
             icon = { d -> drawLock(d) },
             keyboardType = KeyboardType.Password,
@@ -155,9 +164,10 @@ fun LoginScreen(
             )
         )
 
-        if (error.isNotEmpty()) {
+        val displayError = localError.ifEmpty { serverError ?: "" }
+        if (displayError.isNotEmpty()) {
             Text(
-                text = error,
+                text = displayError,
                 style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = Pink)
             )
         }
@@ -168,30 +178,47 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .height(48.dp)
                 .clip(RoundedCornerShape(16.dp))
-                .background(Purple)
-                .clickable {
-                    error = when {
+                .background(if (isLoading) Purple.copy(alpha = 0.5f) else Purple)
+                .clickable(enabled = !isLoading) {
+                    localError = when {
                         !email.contains("@") || !email.contains(".") ->
                             "Please enter a valid email address."
                         password.isEmpty() -> "Please enter your password."
                         else -> ""
                     }
-                    if (error.isEmpty()) onLogin(email.trim(), password)
+                    if (localError.isEmpty()) {
+                        if (authViewModel != null) {
+                            authViewModel.login(email.trim(), password) {
+                                onLogin(email.trim(), password)
+                            }
+                        } else {
+                            onLogin(email.trim(), password)
+                        }
+                    }
                 },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconCanvas(18.dp) { d -> drawArrowRight(d) }
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = "Log in",
-                style = TextStyle(
-                    fontFamily = Inter,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 15.sp,
-                    color = Color.White
+            if (isLoading) {
+                CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = "Logging in...",
+                    style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 15.sp, color = Color.White)
                 )
-            )
+            } else {
+                IconCanvas(18.dp) { d -> drawArrowRight(d) }
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Log in",
+                    style = TextStyle(
+                        fontFamily = Inter,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp,
+                        color = Color.White
+                    )
+                )
+            }
         }
 
         Text(
@@ -249,7 +276,7 @@ fun LoginScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = "Keep your 7-day streak alive",
+                    text = "Keep your learning streak alive",
                     style = TextStyle(
                         fontFamily = Inter,
                         fontWeight = FontWeight.Medium,
@@ -461,4 +488,3 @@ private fun LoginScreenPreview() {
         initialPassword = "abcdefghijkl"
     )
 }
-

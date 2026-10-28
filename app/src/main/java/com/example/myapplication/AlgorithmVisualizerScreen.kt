@@ -10,15 +10,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -26,11 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -50,7 +44,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.delay
+import com.example.myapplication.viewmodel.VisualizerViewModel
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -70,51 +64,31 @@ private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
 private val Mono: FontFamily = FontFamily.Monospace
 
-data class VizStep(
-    val low: Int,
-    val high: Int,
-    val mid: Int,
-    val description: String,
-    val activeLine: Int,
-    val isFound: Boolean = false
-)
-
 @Composable
 fun AlgorithmVisualizerScreen(
+    viewModel: VisualizerViewModel? = null,
     onBack: () -> Unit = {},
     onAskAi: (query: String) -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    val array = remember { listOf(2, 5, 8, 12, 16, 23, 38, 56, 72, 91) }
-    val target = 23
-
-    val steps = remember {
-        listOf(
-            VizStep(0, 9, 4, "Initial state: target = $target. Set low = 0 (val 2), high = 9 (val 91).", 1),
-            VizStep(0, 9, 4, "Calculate mid = (0 + 9) / 2 = 4 (value 16). Compare 16 with $target.", 2),
-            VizStep(0, 9, 4, "16 < $target: Target must be in the right half. Set low = mid + 1 = 5.", 4),
-            VizStep(5, 9, 7, "New range [5..9]. Calculate mid = (5 + 9) / 2 = 7 (value 56).", 2),
-            VizStep(5, 9, 7, "56 > $target: Target must be in left half. Set high = mid - 1 = 6.", 5),
-            VizStep(5, 6, 5, "New range [5..6]. Calculate mid = (5 + 6) / 2 = 5 (value 23).", 2),
-            VizStep(5, 6, 5, "23 == $target! Target found at index 5! Search complete in 3 steps.", 3, isFound = true)
-        )
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val vm = viewModel ?: androidx.compose.runtime.remember {
+        VisualizerViewModel(context.applicationContext as android.app.Application)
     }
 
-    var currentStepIdx by remember { mutableIntStateOf(0) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var selectedAlg by remember { mutableIntStateOf(0) } // 0: Binary Search, 1: Bubble Sort, 2: Two Pointers
+    val selectedAlgIdx by vm.selectedAlg.collectAsState()
+    val currentStepIdx by vm.currentStepIdx.collectAsState()
+    val isPlaying by vm.isPlaying.collectAsState()
+    val speed by vm.speed.collectAsState()
 
-    val currentStep = steps[currentStepIdx]
+    val steps = vm.getCurrentSteps()
+    val currentStep = vm.getCurrentStep()
+    val currentMeta = vm.algMetadata.getOrElse(selectedAlgIdx) { vm.algMetadata[0] }
 
-    // Auto play effect
-    LaunchedEffect(isPlaying, currentStepIdx) {
-        if (isPlaying) {
-            if (currentStepIdx < steps.size - 1) {
-                delay(1600)
-                currentStepIdx++
-            } else {
-                isPlaying = false
-            }
+    // Auto complete on final step
+    LaunchedEffect(currentStepIdx) {
+        if (currentStepIdx == steps.size - 1) {
+            vm.completeVisualizerActivity(currentMeta.slug)
         }
     }
 
@@ -179,7 +153,7 @@ fun AlgorithmVisualizerScreen(
             ) {
                 val algs = listOf("Binary Search", "Bubble Sort", "Two Pointers")
                 algs.forEachIndexed { idx, name ->
-                    val selected = idx == selectedAlg
+                    val selected = idx == selectedAlgIdx
                     Box(
                         modifier = Modifier
                             .weight(1f)
@@ -187,7 +161,7 @@ fun AlgorithmVisualizerScreen(
                             .clip(RoundedCornerShape(10.dp))
                             .background(if (selected) Purple else CardBg)
                             .border(1.dp, if (selected) Purple else Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
-                            .clickable { selectedAlg = idx },
+                            .clickable { vm.selectAlgorithm(idx) },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -214,15 +188,20 @@ fun AlgorithmVisualizerScreen(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Target info row
+                // Info row
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val targetLabel = when (selectedAlgIdx) {
+                        0 -> "Target: 23"
+                        1 -> "Mode: Ascending"
+                        else -> "Target Sum: 17"
+                    }
                     Text(
-                        text = "Target: $target",
-                        style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Gold)
+                        text = targetLabel,
+                        style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Gold)
                     )
                     Text(
                         text = "Step ${currentStepIdx + 1} of ${steps.size}",
@@ -235,15 +214,17 @@ fun AlgorithmVisualizerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    array.forEachIndexed { idx, value ->
-                        val isMid = idx == currentStep.mid
-                        val isLow = idx == currentStep.low
-                        val isHigh = idx == currentStep.high
-                        val isEliminated = idx < currentStep.low || idx > currentStep.high
+                    currentStep.array.forEachIndexed { idx, value ->
+                        val isFound = currentStep.isFound && (idx == currentStep.pointer3 || (currentStep.pointerLabels[idx]?.contains("FOUND") == true) || (currentStep.pointerLabels[idx]?.contains("Sorted") == true))
+                        val isMid = idx == currentStep.pointer3
+                        val isP1 = idx == currentStep.pointer1
+                        val isP2 = idx == currentStep.pointer2
+                        val isEliminated = idx in currentStep.eliminatedIndices
 
                         val itemBg by animateColorAsState(
                             targetValue = when {
-                                currentStep.isFound && isMid -> Green
+                                isFound -> Green
+                                currentStep.isSwap && (isP1 || isP2) -> Gold
                                 isMid -> Gold
                                 isEliminated -> EliminatedColor
                                 else -> CardBg
@@ -253,10 +234,21 @@ fun AlgorithmVisualizerScreen(
                         )
 
                         val borderCol = when {
+                            isFound -> Green
                             isMid -> Gold
-                            isLow -> Cyan
-                            isHigh -> PurpleSoft
+                            isP1 -> Cyan
+                            isP2 -> PurpleSoft
                             else -> Color.White.copy(alpha = 0.05f)
+                        }
+
+                        val labelText = currentStep.pointerLabels[idx] ?: when {
+                            isP1 && isP2 && isMid -> "L M H"
+                            isP1 && isMid -> "L M"
+                            isP2 && isMid -> "M H"
+                            isMid -> "M"
+                            isP1 -> if (selectedAlgIdx == 1) "j" else "L"
+                            isP2 -> if (selectedAlgIdx == 1) "j+1" else if (selectedAlgIdx == 2) "R" else "H"
+                            else -> ""
                         }
 
                         Column(
@@ -267,23 +259,16 @@ fun AlgorithmVisualizerScreen(
                             // Pointer labels
                             Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
                                 Text(
-                                    text = when {
-                                        isMid && isLow && isHigh -> "L M H"
-                                        isMid && isLow -> "L M"
-                                        isMid && isHigh -> "M H"
-                                        isMid -> "M"
-                                        isLow -> "L"
-                                        isHigh -> "H"
-                                        else -> ""
-                                    },
+                                    text = labelText,
                                     style = TextStyle(
                                         fontFamily = Mono,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 9.sp,
+                                        fontSize = 8.sp,
                                         color = when {
+                                            isFound -> Green
                                             isMid -> Gold
-                                            isLow -> Cyan
-                                            isHigh -> PurpleSoft
+                                            isP1 -> Cyan
+                                            isP2 -> PurpleSoft
                                             else -> Color.Transparent
                                         }
                                     )
@@ -294,7 +279,7 @@ fun AlgorithmVisualizerScreen(
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(46.dp)
+                                    .height(44.dp)
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(itemBg)
                                     .border(1.5.dp, borderCol, RoundedCornerShape(8.dp)),
@@ -305,7 +290,7 @@ fun AlgorithmVisualizerScreen(
                                     style = TextStyle(
                                         fontFamily = Mono,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
+                                        fontSize = 11.sp,
                                         color = if (isEliminated) TextMuted.copy(alpha = 0.4f) else TextPrimary
                                     )
                                 )
@@ -314,7 +299,7 @@ fun AlgorithmVisualizerScreen(
                             // Index label
                             Text(
                                 text = "[$idx]",
-                                style = TextStyle(fontFamily = Mono, fontSize = 9.sp, color = TextMuted)
+                                style = TextStyle(fontFamily = Mono, fontSize = 8.sp, color = TextMuted)
                             )
                         }
                     }
@@ -325,10 +310,25 @@ fun AlgorithmVisualizerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround
                 ) {
-                    LegendItem("L: Low", Cyan)
-                    LegendItem("M: Mid", Gold)
-                    LegendItem("H: High", PurpleSoft)
-                    LegendItem("Found", Green)
+                    when (selectedAlgIdx) {
+                        0 -> {
+                            LegendItem("L: Low", Cyan)
+                            LegendItem("M: Mid", Gold)
+                            LegendItem("H: High", PurpleSoft)
+                            LegendItem("Found", Green)
+                        }
+                        1 -> {
+                            LegendItem("j", Cyan)
+                            LegendItem("j+1", PurpleSoft)
+                            LegendItem("Swap", Gold)
+                            LegendItem("Sorted", Green)
+                        }
+                        else -> {
+                            LegendItem("L: Left", Cyan)
+                            LegendItem("R: Right", PurpleSoft)
+                            LegendItem("Match", Green)
+                        }
+                    }
                 }
 
                 // Step explanation box
@@ -365,12 +365,11 @@ fun AlgorithmVisualizerScreen(
                 ) {
                     // Reset
                     ControlBtn(icon = { d -> drawReset(d) }, onClick = {
-                        currentStepIdx = 0
-                        isPlaying = false
+                        vm.reset()
                     })
                     // Prev
                     ControlBtn(icon = { d -> drawStepPrev(d) }, enabled = currentStepIdx > 0, onClick = {
-                        if (currentStepIdx > 0) currentStepIdx--
+                        vm.stepPrev()
                     })
                     // Play/Pause main button
                     Box(
@@ -378,37 +377,36 @@ fun AlgorithmVisualizerScreen(
                             .size(48.dp)
                             .clip(CircleShape)
                             .background(Purple)
-                            .clickable { isPlaying = !isPlaying },
+                            .clickable { vm.togglePlayPause() },
                         contentAlignment = Alignment.Center
                     ) {
                         IconCanvas(20.dp) { d -> if (isPlaying) drawPause(d) else drawPlay(d) }
                     }
                     // Next
                     ControlBtn(icon = { d -> drawStepNext(d) }, enabled = currentStepIdx < steps.size - 1, onClick = {
-                        if (currentStepIdx < steps.size - 1) currentStepIdx++
+                        vm.stepNext()
                     })
-                    // Auto ask AI about this step
-                    ControlBtn(icon = { d -> drawBrain(d) }, onClick = {
-                        onAskAi("Can you explain step ${currentStepIdx + 1} of Binary Search where mid is at index ${currentStep.mid}?")
-                    })
+                    // Speed Toggle
+                    Box(
+                        modifier = Modifier
+                            .height(34.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CardBg)
+                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                            .clickable { vm.toggleSpeed() }
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${speed}x",
+                            style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Cyan)
+                        )
+                    }
                 }
             }
 
             // Code & Pseudocode trace section
             SectionTitle("Algorithm Code Trace")
-
-            val codeLines = listOf(
-                "fun binarySearch(arr: IntArray, target: Int): Int {",
-                "    var low = 0; var high = arr.size - 1",
-                "    while (low <= high) {",
-                "        val mid = low + (high - low) / 2",
-                "        if (arr[mid] == target) return mid",
-                "        else if (arr[mid] < target) low = mid + 1",
-                "        else high = mid - 1",
-                "    }",
-                "    return -1",
-                "}"
-            )
 
             val codeShape = RoundedCornerShape(16.dp)
             Column(
@@ -420,15 +418,8 @@ fun AlgorithmVisualizerScreen(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                codeLines.forEachIndexed { idx, line ->
-                    val isActive = when (currentStep.activeLine) {
-                        1 -> idx == 1
-                        2 -> idx == 3
-                        3 -> idx == 4
-                        4 -> idx == 5
-                        5 -> idx == 6
-                        else -> false
-                    }
+                currentMeta.codeLines.forEachIndexed { idx, line ->
+                    val isActive = idx == currentStep.activeLine
 
                     Row(
                         modifier = Modifier
@@ -447,7 +438,7 @@ fun AlgorithmVisualizerScreen(
                             text = line,
                             style = TextStyle(
                                 fontFamily = Mono,
-                                fontSize = 12.sp,
+                                fontSize = 11.sp,
                                 fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
                                 color = if (isActive) Cyan else TextSecondary
                             )
@@ -463,15 +454,15 @@ fun AlgorithmVisualizerScreen(
             ) {
                 ComplexityCard(
                     title = "Time Complexity",
-                    value = "O(log N)",
-                    subtitle = "Halves search space each step",
+                    value = currentMeta.timeComplexity,
+                    subtitle = currentMeta.complexityNote,
                     color = Cyan,
                     modifier = Modifier.weight(1f)
                 )
                 ComplexityCard(
                     title = "Space Complexity",
-                    value = "O(1)",
-                    subtitle = "Constant iterative space",
+                    value = currentMeta.spaceComplexity,
+                    subtitle = "Auxiliary space",
                     color = Green,
                     modifier = Modifier.weight(1f)
                 )
@@ -484,8 +475,9 @@ fun AlgorithmVisualizerScreen(
                     .clip(RoundedCornerShape(16.dp))
                     .background(Brush.horizontalGradient(listOf(Color(0xFF2E2458), CardBg)))
                     .border(1.dp, PurpleSoft.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                    .clickable { onAskAi("Explain why Binary Search requires a sorted array first?") }
-                    .padding(14.dp),
+                    .clickable {
+                        onAskAi("Can you explain step ${currentStepIdx + 1} of ${currentMeta.name}: ${currentStep.description}")
+                    },
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -695,12 +687,6 @@ private fun DrawScope.drawPause(d: Float) {
     val w = 2.5f * d
     drawLine(Color.White, Offset(6f * d, 4f * d), Offset(6f * d, 16f * d), w, StrokeCap.Round)
     drawLine(Color.White, Offset(12f * d, 4f * d), Offset(12f * d, 16f * d), w, StrokeCap.Round)
-}
-
-private fun DrawScope.drawBrain(d: Float) {
-    val c = PurpleSoft
-    drawCircle(c, radius = 6f * d, center = Offset(9f * d, 9f * d), style = lineStroke(d))
-    drawLine(c, Offset(9f * d, 3f * d), Offset(9f * d, 15f * d), 1.2f * d, StrokeCap.Round)
 }
 
 private fun DrawScope.drawSparkles(d: Float, color: Color) {

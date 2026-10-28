@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -24,6 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,6 +44,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.viewmodel.LearningViewModel
+import com.example.myapplication.viewmodel.TopicDetailUiState
 
 private val Bg = Color(0xFF0F1220)
 private val TextPrimary = Color(0xFFF4F6FF)
@@ -66,23 +70,57 @@ data class LessonItem(
     val xp: String,
     val isCompleted: Boolean,
     val isCurrent: Boolean,
-    val isLocked: Boolean
+    val isLocked: Boolean,
+    val isQuiz: Boolean = false
 )
 
 @Composable
 fun ChapterDetailScreen(
+    topicId: Int = 3,
+    learningViewModel: LearningViewModel? = null,
     onBack: () -> Unit = {},
     onStartLesson: (lessonId: Int) -> Unit = {},
+    onOpenQuiz: (lessonId: Int) -> Unit = {},
     onVisualize: () -> Unit = {},
     onAskAi: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    val lessons = listOf(
+    LaunchedEffect(topicId) {
+        learningViewModel?.loadTopicDetail(topicId)
+    }
+
+    val detailState by learningViewModel?.detailState?.collectAsState() ?: androidx.compose.runtime.remember {
+        androidx.compose.runtime.mutableStateOf(null)
+    }
+
+    val dynamicDetail = (detailState as? TopicDetailUiState.Success)?.data
+
+    val chapterTitle = dynamicDetail?.topic?.title ?: "Searching Algorithms"
+    val chapterLabel = dynamicDetail?.topic?.chapterLabel ?: "CHAPTER 03"
+    val chapterSubtitle = dynamicDetail?.topic?.subtitle ?: "Divide & Conquer Search"
+    val chapterDesc = dynamicDetail?.topic?.description ?: "Learn how cutting your search space in half reduces O(N) linear lookups into ultra-fast O(log N) operations."
+    val totalXp = dynamicDetail?.topic?.totalXp ?: 900
+    val progressPct = dynamicDetail?.topic?.progressPercentage ?: 40
+    val completedCount = dynamicDetail?.topic?.completedLessons ?: 2
+    val totalCount = dynamicDetail?.topic?.totalLessons ?: 5
+
+    val lessons = dynamicDetail?.lessons?.map { dl ->
+        LessonItem(
+            id = dl.id,
+            title = dl.title,
+            duration = dl.duration,
+            xp = dl.xp,
+            isCompleted = dl.isCompleted,
+            isCurrent = dl.isCurrent,
+            isLocked = dl.isLocked,
+            isQuiz = dl.lessonType == "QUIZ"
+        )
+    } ?: listOf(
         LessonItem(1, "Linear vs Binary Search: The 1M Step Difference", "8 min", "+100 XP", isCompleted = true, isCurrent = false, isLocked = false),
         LessonItem(2, "Binary Search Core Implementation & Invariants", "12 min", "+150 XP", isCompleted = true, isCurrent = false, isLocked = false),
-        LessonItem(3, "Finding First & Last Position of Target", "15 min", "+150 XP", isCompleted = false, isCurrent = true, isLocked = false),
+        LessonItem(3, "Step Through Binary Search Visualizer Lab", "15 min", "+150 XP", isCompleted = false, isCurrent = true, isLocked = false),
         LessonItem(4, "Search in Rotated Sorted Array", "18 min", "+200 XP", isCompleted = false, isCurrent = false, isLocked = true),
-        LessonItem(5, "Chapter 03 Mastery Test & Challenge", "10 min", "+300 XP", isCompleted = false, isCurrent = false, isLocked = true)
+        LessonItem(5, "Chapter 03 Mastery Test & Challenge", "10 min", "+300 XP", isCompleted = false, isCurrent = false, isLocked = true, isQuiz = true)
     )
 
     Column(
@@ -130,7 +168,7 @@ fun ChapterDetailScreen(
                         )
                     )
                 }
-                Badge("CHAPTER 03", Purple.copy(alpha = 0.12f), PurpleSoft)
+                Badge(chapterLabel, Purple.copy(alpha = 0.12f), PurpleSoft)
             }
 
             // Chapter Hero Card
@@ -149,12 +187,12 @@ fun ChapterDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Badge("SEARCHING ALGORITHMS", Cyan.copy(alpha = 0.12f), Cyan)
-                    Text(text = "+900 XP Total", style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold))
+                    Badge(chapterTitle.uppercase(), Cyan.copy(alpha = 0.12f), Cyan)
+                    Text(text = "+$totalXp XP Total", style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold))
                 }
 
                 Text(
-                    text = "Divide & Conquer Search",
+                    text = chapterSubtitle,
                     style = TextStyle(
                         fontFamily = Poppins,
                         fontWeight = FontWeight.SemiBold,
@@ -164,7 +202,7 @@ fun ChapterDetailScreen(
                 )
 
                 Text(
-                    text = "Learn how cutting your search space in half reduces O(N) linear lookups into ultra-fast O(log N) operations.",
+                    text = chapterDesc,
                     style = TextStyle(fontFamily = Inter, fontSize = 13.sp, lineHeight = 19.sp, color = TextSecondary)
                 )
 
@@ -174,8 +212,8 @@ fun ChapterDetailScreen(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(text = "2 of 5 lessons complete", style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary))
-                        Text(text = "40%", style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Cyan))
+                        Text(text = "$completedCount of $totalCount lessons complete", style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary))
+                        Text(text = "$progressPct%", style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Cyan))
                     }
                     Box(
                         modifier = Modifier
@@ -186,7 +224,7 @@ fun ChapterDetailScreen(
                     ) {
                         Box(
                             Modifier
-                                .fillMaxWidth(0.4f)
+                                .fillMaxWidth((progressPct / 100f).coerceIn(0.02f, 1f))
                                 .fillMaxHeight()
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(Cyan)
@@ -245,7 +283,13 @@ fun ChapterDetailScreen(
                 lessons.forEach { lesson ->
                     LessonRowItem(
                         lesson = lesson,
-                        onClick = { onStartLesson(lesson.id) }
+                        onClick = {
+                            if (lesson.isQuiz) {
+                                onOpenQuiz(lesson.id)
+                            } else {
+                                onStartLesson(lesson.id)
+                            }
+                        }
                     )
                 }
             }
@@ -281,7 +325,6 @@ private fun LessonRowItem(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Status indicator icon
         val iconBg = when {
             lesson.isCompleted -> Green.copy(alpha = 0.15f)
             lesson.isCurrent -> Cyan.copy(alpha = 0.15f)
@@ -306,10 +349,18 @@ private fun LessonRowItem(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(3.dp)
         ) {
-            Text(
-                text = "Lesson ${lesson.id.toString().padStart(2, '0')}",
-                style = TextStyle(fontFamily = Mono, fontSize = 10.sp, color = TextMuted)
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Lesson ${lesson.id.toString().padStart(2, '0')}",
+                    style = TextStyle(fontFamily = Mono, fontSize = 10.sp, color = TextMuted)
+                )
+                if (lesson.isQuiz) {
+                    Badge("QUIZ", Purple.copy(alpha = 0.15f), PurpleSoft)
+                }
+            }
             Text(
                 text = lesson.title,
                 style = TextStyle(
@@ -319,15 +370,13 @@ private fun LessonRowItem(
                     color = if (lesson.isLocked) TextMuted else TextPrimary
                 )
             )
-            Text(
-                text = "${lesson.duration} · ${lesson.xp}",
-                style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(text = lesson.duration, style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextMuted))
+                Text(text = lesson.xp, style = TextStyle(fontFamily = Mono, fontSize = 11.sp, color = Gold))
+            }
         }
 
-        if (!lesson.isLocked) {
-            IconCanvas(16.dp) { d -> drawChevronRight(d) }
-        }
+        IconCanvas(14.dp) { d -> drawChevronRight(d) }
     }
 }
 
@@ -343,12 +392,17 @@ private fun Badge(text: String, background: Color, textColor: Color) {
     ) {
         Text(
             text = text,
-            style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Medium, fontSize = 10.sp, color = textColor)
+            style = TextStyle(
+                fontFamily = Mono,
+                fontWeight = FontWeight.Medium,
+                fontSize = 10.sp,
+                color = textColor
+            )
         )
     }
 }
 
-// ---------- Canvas icons ----------
+// ---------- Small canvas icons ----------
 
 @Composable
 private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
@@ -373,14 +427,14 @@ private fun DrawScope.drawChevronRight(d: Float) {
 private fun DrawScope.drawCheck(d: Float) {
     val w = 2f * d
     drawLine(Green, Offset(4f * d, 9f * d), Offset(7f * d, 12f * d), w, StrokeCap.Round)
-    drawLine(Green, Offset(7f * d, 12f * d), Offset(13f * d, 5f * d), w, StrokeCap.Round)
+    drawLine(Green, Offset(7f * d, 12f * d), Offset(12f * d, 4f * d), w, StrokeCap.Round)
 }
 
 private fun DrawScope.drawPlay(d: Float) {
     val path = Path().apply {
         moveTo(6f * d, 4f * d)
-        lineTo(14f * d, 9f * d)
-        lineTo(6f * d, 14f * d)
+        lineTo(13f * d, 8f * d)
+        lineTo(6f * d, 12f * d)
         close()
     }
     drawPath(path, Cyan)
@@ -388,15 +442,15 @@ private fun DrawScope.drawPlay(d: Float) {
 
 private fun DrawScope.drawLock(d: Float) {
     val c = TextMuted
-    drawArc(c, 180f, 180f, false, Offset(4f * d, 2f * d), Size(6f * d, 6f * d), style = lineStroke(d))
-    drawRect(c, Offset(3f * d, 7f * d), Size(8f * d, 6f * d), style = lineStroke(d))
+    drawRect(c, Offset(3f * d, 6f * d), Size(8f * d, 6f * d), style = lineStroke(d, 1.2f))
+    drawArc(c, 180f, 180f, false, Offset(4.5f * d, 2.5f * d), Size(5f * d, 5f * d), style = lineStroke(d, 1.2f))
 }
 
 private fun DrawScope.drawEye(d: Float) {
     val c = Color.White
-    drawCircle(c, radius = 2.5f * d, center = Offset(8f * d, 8f * d), style = lineStroke(d))
-    drawArc(c, 210f, 120f, false, Offset(2f * d, 4f * d), Size(12f * d, 8f * d), style = lineStroke(d))
-    drawArc(c, 30f, 120f, false, Offset(2f * d, 4f * d), Size(12f * d, 8f * d), style = lineStroke(d))
+    drawCircle(c, radius = 2.5f * d, center = Offset(8f * d, 8f * d))
+    drawArc(c, 0f, 180f, false, Offset(2f * d, 3f * d), Size(12f * d, 10f * d), style = lineStroke(d, 1.5f))
+    drawArc(c, 180f, 180f, false, Offset(2f * d, 3f * d), Size(12f * d, 10f * d), style = lineStroke(d, 1.5f))
 }
 
 private fun DrawScope.drawSparkles(d: Float, color: Color) {
@@ -412,12 +466,10 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
         lineTo((cx + r) * d, cy * d)
         lineTo((cx + i) * d, (cy + i) * d)
         lineTo(cx * d, (cy + r) * d)
-        lineTo((cx - i) * d, (cy + i) * d)
-        lineTo((cx - r) * d, cy * d)
         lineTo((cx - i) * d, (cy - i) * d)
         close()
     }
-    drawPath(path, color, style = lineStroke(d, 1.2f))
+    drawPath(path, color, style = Stroke(width = 1.2f * d, join = StrokeJoin.Round))
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
