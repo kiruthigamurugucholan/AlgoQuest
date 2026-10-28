@@ -8,9 +8,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
-    // 10.0.2.2 is the special alias to your host loopback interface (127.0.0.1) on Android Emulator
-    // Change to your PC's LAN IP (e.g., http://192.168.1.100/...) when testing on a physical device.
-    var baseUrl: String = "http://10.0.2.2/algoquest_backend/api/index.php?route="
+    // 10.0.2.2 is the special alias to host loopback (127.0.0.1) on Android Emulator.
+    // Change to PC LAN IP (e.g. http://192.168.1.100/algoquest_backend/api/) for physical device testing.
+    var baseUrl: String = "http://10.0.2.2/algoquest_backend/api/"
 
     private var retrofit: Retrofit? = null
     private var apiServiceInstance: ApiService? = null
@@ -42,17 +42,30 @@ object RetrofitClient {
 
         val okHttpClient = OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
-            .connectTimeout(30, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(15, TimeUnit.SECONDS)
+            .writeTimeout(15, TimeUnit.SECONDS)
             .build()
 
-        return Retrofit.Builder()
-            .baseUrl(baseUrl)
-            .client(okHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
-            .build()
-            .also { retrofit = it }
+        val safeBaseUrl = try {
+            val url = baseUrl.trim()
+            if (url.endsWith("/")) url else "$url/"
+        } catch (_: Exception) {
+            "http://10.0.2.2/algoquest_backend/api/"
+        }
+
+        return try {
+            Retrofit.Builder()
+                .baseUrl(safeBaseUrl)
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+        } catch (_: Exception) {
+            Retrofit.Builder()
+                .baseUrl("http://10.0.2.2/algoquest_backend/api/")
+                .client(okHttpClient)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+        }.also { retrofit = it }
     }
 }
-
