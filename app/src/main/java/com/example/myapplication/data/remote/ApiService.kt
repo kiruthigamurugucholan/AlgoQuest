@@ -77,5 +77,8 @@ interface ApiService {
 
     @GET("ai/history")
     suspend fun getAiHistory(): Response<ApiResponse<AiHistoryData>>
+
+    @POST("ai/visualizer-explain")
+    suspend fun explainVisualizer(@Body req: com.example.myapplication.data.model.request.VisualizerAiRequest): Response<ApiResponse<com.example.myapplication.data.model.response.VisualizerAiData>>
 }
 

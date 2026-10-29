@@ -233,3 +233,14 @@ data class AiMessageDto(
     @SerializedName("tags") val tags: List<String> = emptyList()
 )
 
+// --- Visualizer AI ---
+data class VisualizerAiData(
+    @SerializedName("title") val title: String,
+    @SerializedName("explanation") val explanation: String,
+    @SerializedName("key_takeaway") val keyTakeaway: String,
+    @SerializedName("code_tip") val codeTip: String,
+    @SerializedName("action_type") val actionType: String,
+    @SerializedName("source") val source: String
+)
+
+

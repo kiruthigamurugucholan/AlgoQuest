@@ -152,6 +152,10 @@ switch (true) {
         AiChatController::chat($body);
         break;
 
+    case $path === 'ai/visualizer-explain' && $method === 'POST':
+        AiChatController::explainVisualizer($body);
+        break;
+
     case $path === 'ai/history' && $method === 'GET':
         AiChatController::getHistory();
         break;

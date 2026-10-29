@@ -1,30 +1,43 @@
 package com.example.myapplication
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +46,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -40,10 +54,12 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.data.algorithm.CodeLanguage
 import com.example.myapplication.viewmodel.VisualizerViewModel
 
 private val Bg = Color(0xFF0F1220)
@@ -55,9 +71,10 @@ private val Purple = Color(0xFF6C5CE7)
 private val PurpleSoft = Color(0xFFB5A7FF)
 private val Green = Color(0xFF2ECC71)
 private val Gold = Color(0xFFFFB84D)
+private val RedAlert = Color(0xFFFF6B6B)
 private val CardBg = Color(0xFF1A1F36)
 private val SelectedBg = Color(0xFF25213E)
-private val EliminatedColor = Color(0xFF23283E)
+private val EliminatedColor = Color(0xFF202336)
 private val CodeBg = Color(0xFF131728)
 
 private val Poppins: FontFamily = FontFamily.SansSerif
@@ -72,112 +89,458 @@ fun AlgorithmVisualizerScreen(
     onSelectTab: (Int) -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val vm = viewModel ?: androidx.compose.runtime.remember {
+    val vm = viewModel ?: remember {
         VisualizerViewModel(context.applicationContext as android.app.Application)
     }
 
     val selectedAlgIdx by vm.selectedAlg.collectAsState()
+    val currentLanguage by vm.currentLanguage.collectAsState()
+    val editableCode by vm.editableCode.collectAsState()
     val currentStepIdx by vm.currentStepIdx.collectAsState()
     val isPlaying by vm.isPlaying.collectAsState()
     val speed by vm.speed.collectAsState()
 
-    val steps = vm.getCurrentSteps()
-    val currentStep = vm.getCurrentStep()
+    val isInputEditorOpen by vm.isInputEditorOpen.collectAsState()
+    val customArrayInput by vm.customArrayInput.collectAsState()
+    val customTargetInput by vm.customTargetInput.collectAsState()
+    val inputError by vm.inputError.collectAsState()
+    val codeStatusMessage by vm.codeStatusMessage.collectAsState()
+
+    val isAiSheetOpen by vm.isAiSheetOpen.collectAsState()
+    val aiLoading by vm.aiLoading.collectAsState()
+    val aiResponse by vm.aiResponse.collectAsState()
+    val aiError by vm.aiError.collectAsState()
+    val selectedAiAction by vm.selectedAiAction.collectAsState()
+
+    val frames = vm.getCurrentFrames()
+    val currentFrame = vm.getCurrentFrame()
     val currentMeta = vm.algMetadata.getOrElse(selectedAlgIdx) { vm.algMetadata[0] }
+
+    var userCustomQuestion by remember { mutableStateOf("") }
+    var isCodeEditorExpanded by remember { mutableStateOf(true) }
 
     // Auto complete on final step
     LaunchedEffect(currentStepIdx) {
-        if (currentStepIdx == steps.size - 1) {
+        if (frames.isNotEmpty() && currentStepIdx == frames.size - 1) {
             vm.completeVisualizerActivity(currentMeta.slug)
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Bg)
             .statusBarsPadding()
     ) {
         Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Header bar
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Header bar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(CardBg)
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                                .clickable(onClick = onBack),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            IconCanvas(16.dp) { d -> drawChevronLeft(d) }
+                        }
+                        Column {
+                            Text(
+                                text = "Code Visualizer Lab",
+                                style = TextStyle(
+                                    fontFamily = Poppins,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 18.sp,
+                                    color = TextPrimary
+                                )
+                            )
+                            Text(
+                                text = "User-driven code execution & state tracing",
+                                style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                            )
+                        }
+                    }
+                    Badge("EXEC RUNTIME", Cyan.copy(alpha = 0.09f), Cyan)
+                }
+
+                // Algorithm selector chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val algs = listOf("Binary Search", "Bubble Sort", "Two Pointers")
+                    algs.forEachIndexed { idx, name ->
+                        val selected = idx == selectedAlgIdx
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Purple else CardBg)
+                                .border(1.dp, if (selected) Purple else Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+                                .clickable { vm.selectAlgorithm(idx) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = name,
+                                style = TextStyle(
+                                    fontFamily = Inter,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 11.sp,
+                                    color = if (selected) Color.White else TextSecondary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Interactive Code Editor Section
+                SectionTitle("Interactive Code Editor & Trace")
+
+                val codeShape = RoundedCornerShape(16.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(codeShape)
+                        .background(CodeBg)
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), codeShape)
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    // Editor Top Bar: Language Selector & Actions
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Supported Language Selection Pills
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CodeLanguage.values().forEach { lang ->
+                                val isSelected = currentLanguage == lang
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (isSelected) Purple else CardBg)
+                                        .border(1.dp, if (isSelected) Purple else Color.White.copy(alpha = 0.06f), RoundedCornerShape(6.dp))
+                                    .clickable { vm.setLanguage(lang) }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = lang.displayName,
+                                    style = TextStyle(
+                                        fontFamily = Mono,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 10.sp,
+                                        color = if (isSelected) Color.White else TextSecondary
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Reset & Run Controls
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(CardBg)
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                                .clickable { vm.resetCodeToTemplate() }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "↺ Template",
+                                style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = TextMuted)
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Purple)
+                                .clickable { vm.runAndVisualizeCode() }
+                                .padding(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "▶ Run & Trace",
+                                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Color.White)
+                            )
+                        }
+                    }
+                }
+
+                codeStatusMessage?.let { msg ->
+                    Text(
+                        text = "ℹ️ $msg",
+                        style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = Gold)
+                    )
+                }
+
+                // Synchronized Code Editor with Line Numbers & Active Line Highlighting
+                val lines = editableCode.lines()
+                val activeLineNum = currentFrame.activeLineNumber
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.35f))
+                        .padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    lines.forEachIndexed { index, lineText ->
+                        val lineNum = index + 1
+                        val isExecuting = lineNum == activeLineNum
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isExecuting) Purple.copy(alpha = 0.35f) else Color.Transparent)
+                                .padding(horizontal = 6.dp, vertical = 2.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Line number column
+                            Text(
+                                text = "$lineNum".padStart(2, ' '),
+                                style = TextStyle(
+                                    fontFamily = Mono,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isExecuting) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isExecuting) Cyan else TextMuted
+                                )
+                            )
+
+                            // Active execution indicator dot
+                            if (isExecuting) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(Cyan)
+                                )
+                            } else {
+                                Spacer(modifier = Modifier.width(6.dp))
+                            }
+
+                            // Code line content
+                            Text(
+                                text = lineText,
+                                style = TextStyle(
+                                    fontFamily = Mono,
+                                    fontSize = 11.sp,
+                                    fontWeight = if (isExecuting) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isExecuting) TextPrimary else TextSecondary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Code Editor Editable Input toggle
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CardBg)
+                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                        .clickable { isCodeEditorExpanded = !isCodeEditorExpanded }
+                        .padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isCodeEditorExpanded) "▲ Hide Raw Editor" else "▼ Edit Code Directly",
+                        style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = PurpleSoft)
+                    )
+                }
+
+                if (isCodeEditorExpanded) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = "Direct Code Input (${currentLanguage.displayName}):",
+                            style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = TextMuted)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(120.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(CodeBg)
+                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                        ) {
+                            BasicTextField(
+                                value = editableCode,
+                                onValueChange = { vm.onCodeEdited(it) },
+                                textStyle = TextStyle(fontFamily = Mono, fontSize = 11.sp, color = TextPrimary),
+                                cursorBrush = SolidColor(Cyan),
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Custom Input & Randomize Bar
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (isInputEditorOpen) Purple.copy(alpha = 0.25f) else CardBg)
+                        .border(1.dp, if (isInputEditorOpen) Purple else Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                        .clickable { vm.toggleInputEditor() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(CardBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
-                            .clickable(onClick = onBack),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        IconCanvas(16.dp) { d -> drawChevronLeft(d) }
-                    }
-                    Column {
-                        Text(
-                            text = "Visualizer Lab",
-                            style = TextStyle(
-                                fontFamily = Poppins,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 18.sp,
-                                color = TextPrimary
-                            )
-                        )
-                        Text(
-                            text = "Interactive execution trace",
-                            style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
-                        )
-                    }
+                    Text(
+                        text = if (isInputEditorOpen) "Close Input Panel" else "⚙️ Input Parameters",
+                        style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 11.sp, color = if (isInputEditorOpen) PurpleSoft else TextSecondary)
+                    )
                 }
-                Badge("LIVE VIZ", Cyan.copy(alpha = 0.09f), Cyan)
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(CardBg)
+                        .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(8.dp))
+                        .clickable { vm.randomizeInput() }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = "🎲 Randomize Values",
+                        style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 11.sp, color = Cyan)
+                    )
+                }
             }
 
-            // Algorithm selector chips
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Collapsible Input Parameters Panel
+            AnimatedVisibility(
+                visible = isInputEditorOpen,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
             ) {
-                val algs = listOf("Binary Search", "Bubble Sort", "Two Pointers")
-                algs.forEachIndexed { idx, name ->
-                    val selected = idx == selectedAlgIdx
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CardBg)
+                        .border(1.dp, Purple.copy(alpha = 0.3f), RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "Set Custom Execution Inputs",
+                        style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = TextPrimary)
+                    )
+
+                    Text(
+                        text = "Array (2–12 numbers, comma-separated):",
+                        style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = TextMuted)
+                    )
                     Box(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(if (selected) Purple else CardBg)
-                            .border(1.dp, if (selected) Purple else Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
-                            .clickable { vm.selectAlgorithm(idx) },
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CodeBg)
+                            .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.CenterStart
                     ) {
-                        Text(
-                            text = name,
-                            style = TextStyle(
-                                fontFamily = Inter,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 11.sp,
-                                color = if (selected) Color.White else TextSecondary
-                            )
+                        BasicTextField(
+                            value = customArrayInput,
+                            onValueChange = { vm.onArrayInputChanged(it) },
+                            textStyle = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = TextPrimary),
+                            cursorBrush = SolidColor(Cyan),
+                            modifier = Modifier.fillMaxWidth()
                         )
+                    }
+
+                    if (selectedAlgIdx != 1) { // Target needed for BS & Two Pointers
+                        Text(
+                            text = if (selectedAlgIdx == 0) "Target to Find:" else "Target Sum:",
+                            style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = TextMuted)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(CodeBg)
+                                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .padding(horizontal = 10.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            BasicTextField(
+                                value = customTargetInput,
+                                onValueChange = { vm.onTargetInputChanged(it) },
+                                textStyle = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = TextPrimary),
+                                cursorBrush = SolidColor(Gold),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    inputError?.let { err ->
+                        Text(
+                            text = "⚠️ $err",
+                            style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = RedAlert)
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Purple)
+                                .clickable { vm.applyCustomInput() }
+                                .padding(horizontal = 14.dp, vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "Apply & Execute",
+                                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 12.sp, color = Color.White)
+                            )
+                        }
                     }
                 }
             }
 
-            // Main Visualization Canvas / Container
+            // Main Dynamic Execution Canvas
             val vizShape = RoundedCornerShape(20.dp)
             Column(
                 modifier = Modifier
@@ -195,36 +558,41 @@ fun AlgorithmVisualizerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     val targetLabel = when (selectedAlgIdx) {
-                        0 -> "Target: 23"
+                        0 -> currentFrame.variables["target"]?.let { "Target: $it" } ?: "Target: Active"
                         1 -> "Mode: Ascending"
-                        else -> "Target Sum: 17"
+                        else -> currentFrame.variables["targetSum"]?.let { "Target Sum: $it" } ?: "Target Sum: Active"
                     }
                     Text(
                         text = targetLabel,
                         style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Gold)
                     )
                     Text(
-                        text = "Step ${currentStepIdx + 1} of ${steps.size}",
+                        text = if (frames.isNotEmpty()) "Step ${currentStepIdx + 1} of ${frames.size}" else "Step 0 of 0",
                         style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = TextMuted)
                     )
                 }
 
-                // Array elements visual boxes
+                // Array Elements Animated Display
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    currentStep.array.forEachIndexed { idx, value ->
-                        val isFound = currentStep.isFound && (idx == currentStep.pointer3 || (currentStep.pointerLabels[idx]?.contains("FOUND") == true) || (currentStep.pointerLabels[idx]?.contains("Sorted") == true))
-                        val isMid = idx == currentStep.pointer3
-                        val isP1 = idx == currentStep.pointer1
-                        val isP2 = idx == currentStep.pointer2
-                        val isEliminated = idx in currentStep.eliminatedIndices
+                    currentFrame.arraySnapshot.forEachIndexed { idx, value ->
+                        val isFound = currentFrame.isFound && (
+                                idx == currentFrame.pointer3 ||
+                                        (currentFrame.pointerLabels[idx]?.contains("FOUND") == true) ||
+                                        (currentFrame.pointerLabels[idx]?.contains("MATCH") == true) ||
+                                        (currentFrame.pointerLabels[idx]?.contains("Sorted") == true)
+                                )
+                        val isMid = idx == currentFrame.pointer3
+                        val isP1 = idx == currentFrame.pointer1
+                        val isP2 = idx == currentFrame.pointer2
+                        val isEliminated = idx in currentFrame.eliminatedIndices
 
                         val itemBg by animateColorAsState(
                             targetValue = when {
                                 isFound -> Green
-                                currentStep.isSwap && (isP1 || isP2) -> Gold
+                                currentFrame.isSwap && (isP1 || isP2) -> Gold
                                 isMid -> Gold
                                 isEliminated -> EliminatedColor
                                 else -> CardBg
@@ -241,7 +609,7 @@ fun AlgorithmVisualizerScreen(
                             else -> Color.White.copy(alpha = 0.05f)
                         }
 
-                        val labelText = currentStep.pointerLabels[idx] ?: when {
+                        val labelText = currentFrame.pointerLabels[idx] ?: when {
                             isP1 && isP2 && isMid -> "L M H"
                             isP1 && isMid -> "L M"
                             isP2 && isMid -> "M H"
@@ -256,7 +624,7 @@ fun AlgorithmVisualizerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            // Pointer labels
+                            // Pointer label box
                             Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.Center) {
                                 Text(
                                     text = labelText,
@@ -275,7 +643,7 @@ fun AlgorithmVisualizerScreen(
                                 )
                             }
 
-                            // Number card
+                            // Value card
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -291,12 +659,12 @@ fun AlgorithmVisualizerScreen(
                                         fontFamily = Mono,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 11.sp,
-                                        color = if (isEliminated) TextMuted.copy(alpha = 0.4f) else TextPrimary
+                                        color = if (isEliminated) TextMuted.copy(alpha = 0.35f) else TextPrimary
                                     )
                                 )
                             }
 
-                            // Index label
+                            // Index
                             Text(
                                 text = "[$idx]",
                                 style = TextStyle(fontFamily = Mono, fontSize = 8.sp, color = TextMuted)
@@ -305,7 +673,7 @@ fun AlgorithmVisualizerScreen(
                     }
                 }
 
-                // Legend indicators
+                // Legend
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceAround
@@ -331,7 +699,39 @@ fun AlgorithmVisualizerScreen(
                     }
                 }
 
-                // Step explanation box
+                // Live Variables Watch Window
+                if (currentFrame.variables.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(CodeBg.copy(alpha = 0.85f))
+                            .horizontalScroll(rememberScrollState())
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "VARS:",
+                            style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 9.sp, color = Cyan)
+                        )
+                        currentFrame.variables.forEach { (k, v) ->
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(CardBg)
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "$k: $v",
+                                    style = TextStyle(fontFamily = Mono, fontSize = 9.sp, color = TextPrimary)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Step Description Box
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -344,14 +744,14 @@ fun AlgorithmVisualizerScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconCanvas(18.dp) { d -> drawSparkles(d, if (currentStep.isFound) Green else Cyan) }
+                        IconCanvas(18.dp) { d -> drawSparkles(d, if (currentFrame.isFound) Green else Cyan) }
                         Text(
-                            text = currentStep.description,
+                            text = currentFrame.description,
                             style = TextStyle(
                                 fontFamily = Inter,
                                 fontSize = 12.sp,
                                 lineHeight = 18.sp,
-                                color = if (currentStep.isFound) Green else TextPrimary
+                                color = if (currentFrame.isFound) Green else TextPrimary
                             )
                         )
                     }
@@ -363,15 +763,8 @@ fun AlgorithmVisualizerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Reset
-                    ControlBtn(icon = { d -> drawReset(d) }, onClick = {
-                        vm.reset()
-                    })
-                    // Prev
-                    ControlBtn(icon = { d -> drawStepPrev(d) }, enabled = currentStepIdx > 0, onClick = {
-                        vm.stepPrev()
-                    })
-                    // Play/Pause main button
+                    ControlBtn(icon = { d -> drawReset(d) }, onClick = { vm.reset() })
+                    ControlBtn(icon = { d -> drawStepPrev(d) }, enabled = currentStepIdx > 0, onClick = { vm.stepPrev() })
                     Box(
                         modifier = Modifier
                             .size(48.dp)
@@ -382,11 +775,7 @@ fun AlgorithmVisualizerScreen(
                     ) {
                         IconCanvas(20.dp) { d -> if (isPlaying) drawPause(d) else drawPlay(d) }
                     }
-                    // Next
-                    ControlBtn(icon = { d -> drawStepNext(d) }, enabled = currentStepIdx < steps.size - 1, onClick = {
-                        vm.stepNext()
-                    })
-                    // Speed Toggle
+                    ControlBtn(icon = { d -> drawStepNext(d) }, enabled = currentStepIdx < frames.size - 1, onClick = { vm.stepNext() })
                     Box(
                         modifier = Modifier
                             .height(34.dp)
@@ -400,48 +789,6 @@ fun AlgorithmVisualizerScreen(
                         Text(
                             text = "${speed}x",
                             style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Cyan)
-                        )
-                    }
-                }
-            }
-
-            // Code & Pseudocode trace section
-            SectionTitle("Algorithm Code Trace")
-
-            val codeShape = RoundedCornerShape(16.dp)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(codeShape)
-                    .background(CodeBg)
-                    .border(1.dp, Color.White.copy(alpha = 0.06f), codeShape)
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                currentMeta.codeLines.forEachIndexed { idx, line ->
-                    val isActive = idx == currentStep.activeLine
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(if (isActive) Purple.copy(alpha = 0.25f) else Color.Transparent)
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${idx + 1}".padStart(2, ' '),
-                            style = TextStyle(fontFamily = Mono, fontSize = 11.sp, color = TextMuted)
-                        )
-                        Text(
-                            text = line,
-                            style = TextStyle(
-                                fontFamily = Mono,
-                                fontSize = 11.sp,
-                                fontWeight = if (isActive) FontWeight.Bold else FontWeight.Normal,
-                                color = if (isActive) Cyan else TextSecondary
-                            )
                         )
                     }
                 }
@@ -468,24 +815,23 @@ fun AlgorithmVisualizerScreen(
                 )
             }
 
-            // Ask AI banner
+            // Gemini AI Ally Banner
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(16.dp))
                     .background(Brush.horizontalGradient(listOf(Color(0xFF2E2458), CardBg)))
                     .border(1.dp, PurpleSoft.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                    .clickable {
-                        onAskAi("Can you explain step ${currentStepIdx + 1} of ${currentMeta.name}: ${currentStep.description}")
-                    },
+                    .clickable { vm.openAiSheet("EXPLAIN_STEP") }
+                    .padding(14.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Purple.copy(alpha = 0.2f)),
+                        .background(Purple.copy(alpha = 0.25f)),
                     contentAlignment = Alignment.Center
                 ) {
                     IconCanvas(18.dp) { d -> drawSparkles(d, PurpleSoft) }
@@ -494,12 +840,18 @@ fun AlgorithmVisualizerScreen(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Quest AI Ally",
+                            style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = TextPrimary)
+                        )
+                        Badge("GEMINI", PurpleSoft.copy(alpha = 0.15f), PurpleSoft)
+                    }
                     Text(
-                        text = "Have a question about this step?",
-                        style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TextPrimary)
-                    )
-                    Text(
-                        text = "Ask Quest AI for custom explanations or code snippets",
+                        text = "Real-time step & line analysis, debugging, and hints",
                         style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
                     )
                 }
@@ -510,6 +862,190 @@ fun AlgorithmVisualizerScreen(
         // Shared Bottom Navigation Bar
         AlgoQuestBottomBar(selectedTab = 2, onSelectTab = onSelectTab)
     }
+
+    // Gemini AI Ally Bottom Sheet / Panel
+    AnimatedVisibility(
+        visible = isAiSheetOpen,
+        enter = fadeIn() + expandVertically(expandFrom = Alignment.Bottom),
+        exit = fadeOut() + shrinkVertically(shrinkTowards = Alignment.Bottom)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.65f))
+                .clickable { vm.closeAiSheet() },
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .background(SelectedBg)
+                    .border(1.dp, Purple.copy(alpha = 0.3f), RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                    .clickable(enabled = false) {}
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Sheet Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconCanvas(18.dp) { d -> drawSparkles(d, PurpleSoft) }
+                        Text(
+                            text = "Quest AI Ally • Code & Step Analysis",
+                            style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = TextPrimary)
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(CardBg)
+                            .clickable { vm.closeAiSheet() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "✕", style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = TextMuted))
+                    }
+                }
+
+                // 5 Gemini AI Actions (Requirement 8)
+                val actionsRow1 = listOf(
+                    "EXPLAIN_LINE" to "🔍 Explain This Line",
+                    "EXPLAIN_STEP" to "💡 Explain This Step",
+                    "DEBUG_CODE" to "🐞 Debug My Code"
+                )
+
+                val actionsRow2 = listOf(
+                    "GIVE_HINT" to "✨ Give Me a Hint",
+                    "EXPLAIN_COMPLEXITY" to "📊 Time Complexity"
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    actionsRow1.forEach { (actionKey, label) ->
+                        val isSelected = selectedAiAction == actionKey
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Purple else CardBg)
+                                .border(1.dp, if (isSelected) Purple else Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                .clickable { vm.requestAiExplanation(actionKey) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = TextStyle(fontFamily = Inter, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White else TextSecondary),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    actionsRow2.forEach { (actionKey, label) ->
+                        val isSelected = selectedAiAction == actionKey
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isSelected) Purple else CardBg)
+                                .border(1.dp, if (isSelected) Purple else Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                .clickable { vm.requestAiExplanation(actionKey) }
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = TextStyle(fontFamily = Inter, fontSize = 9.sp, fontWeight = FontWeight.Medium, color = if (isSelected) Color.White else TextSecondary),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                // AI Response Card
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CardBg)
+                        .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (aiLoading) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = PurpleSoft, strokeWidth = 2.dp)
+                            Text(
+                                text = "Quest AI is analyzing your code and execution state...",
+                                style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary)
+                            )
+                        }
+                    } else if (aiError != null) {
+                        Text(
+                            text = "⚠️ $aiError",
+                            style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = RedAlert)
+                        )
+                    } else if (aiResponse != null) {
+                        val res = aiResponse!!
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = res.title,
+                                    style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Cyan)
+                                )
+                                Badge(res.source, PurpleSoft.copy(alpha = 0.1f), PurpleSoft)
+                            }
+                            Text(
+                                text = res.explanation,
+                                style = TextStyle(fontFamily = Inter, fontSize = 12.sp, lineHeight = 18.sp, color = TextPrimary)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(CodeBg)
+                                    .padding(8.dp)
+                            ) {
+                                Text(
+                                    text = "💡 ${res.keyTakeaway}",
+                                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = Gold)
+                                )
+                            }
+                            if (res.codeTip.isNotEmpty()) {
+                                Text(
+                                    text = "📌 ${res.codeTip}",
+                                    style = TextStyle(fontFamily = Mono, fontSize = 10.sp, color = PurpleSoft)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 }
 
 @Composable

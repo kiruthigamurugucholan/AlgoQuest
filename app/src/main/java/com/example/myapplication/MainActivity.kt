@@ -106,14 +106,28 @@ class MainActivity : ComponentActivity() {
                                 screen = 6
                             },
                             onLogin = { screen = 5 },
-                            onGoogle = { screen = 6 }
+                            onGoogle = {
+                                authViewModel.loginWithGoogle {
+                                    profileViewModel.loadProfile()
+                                    dashboardViewModel.loadDashboard()
+                                    screen = 6
+                                }
+                            }
                         )
                         5 -> LoginScreen(
                             authViewModel = authViewModel,
                             onLogin = { _, _ ->
+                                profileViewModel.loadProfile()
+                                dashboardViewModel.loadDashboard()
                                 screen = 7
                             },
-                            onGoogle = { screen = 7 },
+                            onGoogle = {
+                                authViewModel.loginWithGoogle {
+                                    profileViewModel.loadProfile()
+                                    dashboardViewModel.loadDashboard()
+                                    screen = 7
+                                }
+                            },
                             onCreateAccount = { screen = 4 }
                         )
                         6 -> PersonalizeScreen(
@@ -185,6 +199,8 @@ class MainActivity : ComponentActivity() {
                             onBack = { screen = 7 },
                             onLogout = {
                                 authViewModel.logout {
+                                    profileViewModel.clearState()
+                                    dashboardViewModel.clearState()
                                     screen = 5
                                 }
                             },

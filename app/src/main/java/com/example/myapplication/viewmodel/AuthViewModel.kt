@@ -58,6 +58,21 @@ class AuthViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun loginWithGoogle(onSuccess: () -> Unit) {
+        _uiState.value = AuthUiState.Loading
+        viewModelScope.launch {
+            repository.loginWithGoogle().fold(
+                onSuccess = { data ->
+                    _uiState.value = AuthUiState.Success(data)
+                    onSuccess()
+                },
+                onFailure = { error ->
+                    _uiState.value = AuthUiState.Error(error.message ?: "Google login failed")
+                }
+            )
+        }
+    }
+
     fun personalize(goal: String, level: String, dailyMinutes: Int, onComplete: () -> Unit) {
         viewModelScope.launch {
             repository.personalize(goal, level, dailyMinutes)

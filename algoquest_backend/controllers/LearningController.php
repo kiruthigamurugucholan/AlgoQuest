@@ -162,6 +162,7 @@ class LearningController {
         $userId = (int)$user['id'];
         $db = Database::getConnection();
 
+        // 1. Verify that the requested lesson exists
         $lStmt = $db->prepare('SELECT id, topic_id, title, xp_reward FROM lessons WHERE id = :id');
         $lStmt->execute(['id' => $lessonId]);
         $lesson = $lStmt->fetch();
@@ -170,61 +171,221 @@ class LearningController {
             Response::notFound('Lesson not found');
         }
 
-        $xpEarned = (int)$lesson['xp_reward'];
+        $lessonXpReward = (int)$lesson['xp_reward'];
+        $topicId = (int)$lesson['topic_id'];
 
         try {
             $db->beginTransaction();
 
-            // Insert completion if not already completed
-            $ins = $db->prepare('
-                INSERT INTO user_learning_progress (user_id, lesson_id, is_completed, completed_at)
-                VALUES (:user_id, :lesson_id, TRUE, NOW())
-                ON DUPLICATE KEY UPDATE is_completed = TRUE
-            ');
-            $ins->execute(['user_id' => $userId, 'lesson_id' => $lessonId]);
-
-            // Award XP to user profile
-            $updProfile = $db->prepare('
-                UPDATE user_profiles
-                SET xp = xp + :xp, level = FLOOR((xp + :xp) / 500) + 1
-                WHERE user_id = :user_id
-            ');
-            $updProfile->execute(['xp' => $xpEarned, 'user_id' => $userId]);
-
-            // Increment daily quest step
-            $today = date('Y-m-d');
-            $updQuest = $db->prepare('
-                UPDATE user_quests
-                SET current_step = LEAST(current_step + 1, 3),
-                    is_completed = (current_step + 1 >= 3)
-                WHERE user_id = :user_id AND assigned_date = :today
-            ');
-            $updQuest->execute(['user_id' => $userId, 'today' => $today]);
-
-            // Check if Binary Searcher achievement should be unlocked (Topic 3 complete or Lesson 3/5 complete)
-            if ((int)$lesson['topic_id'] === 3) {
-                $achievStmt = $db->prepare('
-                    INSERT IGNORE INTO user_achievements (user_id, achievement_id, unlocked_at)
-                    SELECT :user_id, id, NOW() FROM achievements WHERE code = "binary_searcher"
-                ');
-                $achievStmt->execute(['user_id' => $userId]);
-            }
-
-            // Fetch new total XP & Level
-            $pStmt = $db->prepare('SELECT xp, level, current_streak FROM user_profiles WHERE user_id = :user_id');
+            // 2. Lock user profile row to serialize concurrent requests for this user
+            $pStmt = $db->prepare('SELECT xp, level, current_streak FROM user_profiles WHERE user_id = :user_id FOR UPDATE');
             $pStmt->execute(['user_id' => $userId]);
             $profile = $pStmt->fetch();
 
+            if (!$profile) {
+                if ($db->inTransaction()) {
+                    $db->rollBack();
+                }
+                Response::error('User profile not found', [], 404);
+            }
+
+            $currentXp = (int)$profile['xp'];
+            $currentLevel = (int)$profile['level'];
+            $currentStreak = (int)$profile['current_streak'];
+
+            // 3. Inspect existing progress with exclusive lock
+            $progStmt = $db->prepare('
+                SELECT is_completed 
+                FROM user_learning_progress 
+                WHERE user_id = :user_id AND lesson_id = :lesson_id 
+                FOR UPDATE
+            ');
+            $progStmt->execute([
+                'user_id' => $userId,
+                'lesson_id' => $lessonId
+            ]);
+            $existingProgress = $progStmt->fetch();
+            $alreadyCompleted = ($existingProgress && (bool)$existingProgress['is_completed']);
+
+            // 4. Idempotent early-exit if already completed
+            if ($alreadyCompleted) {
+                $db->commit();
+
+                Response::success('Lesson already completed. Progress preserved.', [
+                    'xp_awarded' => 0,
+                    'total_xp' => $currentXp,
+                    'level' => $currentLevel,
+                    'streak' => $currentStreak,
+                ]);
+            }
+
+            // 5. First-time successful completion: mark completed and set completed_at
+            $ins = $db->prepare('
+                INSERT INTO user_learning_progress (user_id, lesson_id, is_completed, completed_at)
+                VALUES (:user_id, :lesson_id, TRUE, NOW())
+                ON DUPLICATE KEY UPDATE 
+                    is_completed = TRUE, 
+                    completed_at = NOW()
+            ');
+            $ins->execute([
+                'user_id' => $userId,
+                'lesson_id' => $lessonId
+            ]);
+
+            // 6. Update today\'s active assigned DAILY quest (matching DashboardController behavior)
+            $today = date('Y-m-d');
+            $qStmt = $db->prepare('
+                SELECT uq.id, uq.quest_id, uq.current_step, uq.is_completed, q.required_steps
+                FROM user_quests uq
+                INNER JOIN quests q ON uq.quest_id = q.id
+                WHERE uq.user_id = :user_id AND uq.assigned_date = :today
+                LIMIT 1
+                FOR UPDATE
+            ');
+            $qStmt->execute(['user_id' => $userId, 'today' => $today]);
+            $userQuest = $qStmt->fetch();
+
+            if (!$userQuest) {
+                // If not assigned yet today, assign default quest 1 (matching DashboardController)
+                $insQuest = $db->prepare('
+                    INSERT IGNORE INTO user_quests (user_id, quest_id, current_step, is_completed, assigned_date)
+                    VALUES (:user_id, 1, 0, FALSE, :today)
+                ');
+                $insQuest->execute([
+                    'user_id' => $userId,
+                    'today' => $today
+                ]);
+
+                $qStmt->execute(['user_id' => $userId, 'today' => $today]);
+                $userQuest = $qStmt->fetch();
+            }
+
+            if ($userQuest) {
+                $userQuestId = (int)$userQuest['id'];
+                $currentStep = (int)$userQuest['current_step'];
+                $requiredSteps = (int)$userQuest['required_steps'];
+                $isQuestCompleted = (bool)$userQuest['is_completed'];
+
+                // Handle completed quests consistently: do not increment if already completed or reached limit
+                if (!$isQuestCompleted && $currentStep < $requiredSteps) {
+                    $nextStep = $currentStep + 1;
+                    $isNowCompleted = ($nextStep >= $requiredSteps);
+
+                    $updQuest = $db->prepare('
+                        UPDATE user_quests
+                        SET current_step = :next_step,
+                            is_completed = :is_completed,
+                            completed_at = CASE WHEN :is_completed_flag = 1 AND completed_at IS NULL THEN NOW() ELSE completed_at END
+                        WHERE id = :id
+                    ');
+                    $updQuest->execute([
+                        'next_step' => $nextStep,
+                        'is_completed' => $isNowCompleted ? 1 : 0,
+                        'is_completed_flag' => $isNowCompleted ? 1 : 0,
+                        'id' => $userQuestId
+                    ]);
+                }
+            }
+
+            // 7. Check Topic Completion & Binary Searcher Achievement
+            $achievementXp = 0;
+            if ($topicId === 3) {
+                $totStmt = $db->prepare('SELECT COUNT(*) FROM lessons WHERE topic_id = :topic_id');
+                $totStmt->execute(['topic_id' => $topicId]);
+                $totalLessonsInTopic = (int)$totStmt->fetchColumn();
+
+                $compStmt = $db->prepare('
+                    SELECT COUNT(*) 
+                    FROM user_learning_progress ulp
+                    INNER JOIN lessons l ON ulp.lesson_id = l.id
+                    WHERE ulp.user_id = :user_id 
+                      AND l.topic_id = :topic_id 
+                      AND ulp.is_completed = TRUE
+                ');
+                $compStmt->execute([
+                    'user_id' => $userId,
+                    'topic_id' => $topicId
+                ]);
+                $completedLessonsInTopic = (int)$compStmt->fetchColumn();
+
+                $isTopicCompleted = ($totalLessonsInTopic > 0 && $completedLessonsInTopic >= $totalLessonsInTopic);
+
+                // Upsert user_topic_progress using distinct placeholders for ATTR_EMULATE_PREPARES => false
+                $updTopicProg = $db->prepare('
+                    INSERT INTO user_topic_progress (user_id, topic_id, completed_lessons, total_lessons, is_completed)
+                    VALUES (:user_id, :topic_id, :completed_ins, :total_ins, :is_completed_ins)
+                    ON DUPLICATE KEY UPDATE 
+                        completed_lessons = :completed_upd,
+                        total_lessons = :total_upd,
+                        is_completed = :is_completed_upd
+                ');
+                $updTopicProg->execute([
+                    'user_id' => $userId,
+                    'topic_id' => $topicId,
+                    'completed_ins' => $completedLessonsInTopic,
+                    'total_ins' => $totalLessonsInTopic,
+                    'is_completed_ins' => $isTopicCompleted ? 1 : 0,
+                    'completed_upd' => $completedLessonsInTopic,
+                    'total_upd' => $totalLessonsInTopic,
+                    'is_completed_upd' => $isTopicCompleted ? 1 : 0
+                ]);
+
+                // Unlock Binary Searcher achievement ONLY when all required Topic 3 lessons are complete
+                if ($isTopicCompleted) {
+                    $achStmt = $db->prepare('SELECT id, xp_reward FROM achievements WHERE code = "binary_searcher" LIMIT 1');
+                    $achStmt->execute();
+                    $achRow = $achStmt->fetch();
+
+                    if ($achRow) {
+                        $achId = (int)$achRow['id'];
+                        $achReward = (int)$achRow['xp_reward']; // 250 XP from seed.sql / database
+
+                        $insAch = $db->prepare('
+                            INSERT IGNORE INTO user_achievements (user_id, achievement_id, unlocked_at)
+                            VALUES (:user_id, :achievement_id, NOW())
+                        ');
+                        $insAch->execute([
+                            'user_id' => $userId,
+                            'achievement_id' => $achId
+                        ]);
+
+                        // Award achievement XP only if newly unlocked (first-time unlock)
+                        if ($insAch->rowCount() > 0) {
+                            $achievementXp = $achReward;
+                        }
+                    }
+                }
+            }
+
+            // 8. Calculate total XP and derive level
+            $totalAwardedXp = $lessonXpReward + $achievementXp;
+            $newXp = $currentXp + $totalAwardedXp;
+            $newLevel = (int)floor($newXp / 500) + 1;
+
+            $updProfile = $db->prepare('
+                UPDATE user_profiles
+                SET xp = :xp, level = :level
+                WHERE user_id = :user_id
+            ');
+            $updProfile->execute([
+                'xp' => $newXp,
+                'level' => $newLevel,
+                'user_id' => $userId
+            ]);
+
+            // 9. Commit before invoking terminating Response helper
             $db->commit();
 
             Response::success('Lesson completed!', [
-                'xp_awarded' => $xpEarned,
-                'total_xp' => (int)$profile['xp'],
-                'level' => (int)$profile['level'],
-                'streak' => (int)$profile['current_streak'],
+                'xp_awarded' => $totalAwardedXp,
+                'total_xp' => $newXp,
+                'level' => $newLevel,
+                'streak' => $currentStreak,
             ]);
-        } catch (Exception $e) {
-            $db->rollBack();
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
             Response::error('Failed to complete lesson.', ['error' => 'Database error'], 500);
         }
     }

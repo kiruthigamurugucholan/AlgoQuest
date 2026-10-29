@@ -35,5 +35,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
             )
         }
     }
+
+    fun clearState() {
+        _uiState.value = DashboardUiState.Loading
+    }
 }
 

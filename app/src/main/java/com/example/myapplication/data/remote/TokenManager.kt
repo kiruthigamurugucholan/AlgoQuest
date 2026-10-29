@@ -28,7 +28,7 @@ class TokenManager(context: Context) {
         prefs.edit()
             .putString(KEY_TOKEN, token)
             .putString(KEY_USER, gson.toJson(user))
-            .apply()
+            .commit()
     }
 
     fun getToken(): String? {
@@ -44,15 +44,23 @@ class TokenManager(context: Context) {
         }
     }
 
+    fun getUserId(): String? {
+        return getUser()?.id?.toString()
+    }
+
+    fun getUserEmail(): String? {
+        return getUser()?.email
+    }
+
     fun updateUserName(name: String) {
         getUser()?.let { user ->
             val updated = user.copy(name = name)
-            prefs.edit().putString(KEY_USER, gson.toJson(updated)).apply()
+            prefs.edit().putString(KEY_USER, gson.toJson(updated)).commit()
         }
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit().clear().commit()
     }
 
     fun isLoggedIn(): Boolean {

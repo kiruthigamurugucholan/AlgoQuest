@@ -70,7 +70,7 @@ fun ProfileScreen(
     onLogout: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    LaunchedEffect(Unit) {
+    LaunchedEffect(viewModel) {
         viewModel?.loadProfile()
     }
 
@@ -93,11 +93,31 @@ fun ProfileScreen(
                 is ProfileUiState.Loading -> {
                     LoadingIndicator(text = "Loading your explorer profile...")
                 }
+                is ProfileUiState.Empty -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ErrorRetryCard(
+                            message = "No profile data available. Tap Retry to reload.",
+                            onRetry = { viewModel?.loadProfile() }
+                        )
+                    }
+                }
                 is ProfileUiState.Error -> {
-                    ErrorRetryCard(
-                        message = state.message,
-                        onRetry = { viewModel?.loadProfile() }
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        ErrorRetryCard(
+                            message = state.message,
+                            onRetry = { viewModel?.loadProfile() }
+                        )
+                    }
                 }
                 is ProfileUiState.Success -> {
                     ProfileContent(
@@ -198,8 +218,9 @@ private fun ProfileContent(
                     text = user.name,
                     style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, color = TextPrimary)
                 )
+                val joinedText = if (user.joined.startsWith("Joined", ignoreCase = true)) user.joined else "Joined ${user.joined}"
                 Text(
-                    text = "${user.email} · Joined ${user.joined}",
+                    text = "${user.email} · $joinedText",
                     style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextSecondary)
                 )
             }
