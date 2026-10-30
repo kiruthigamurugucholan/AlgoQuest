@@ -84,6 +84,9 @@ class MainActivity : ComponentActivity() {
                         0 -> SplashScreen(
                             onFinished = {
                                 if (tokenManager.isLoggedIn()) {
+                                    profileViewModel.loadProfile()
+                                    dashboardViewModel.loadDashboard()
+                                    learningViewModel.loadTopics()
                                     screen = 7
                                 } else {
                                     screen = 1
@@ -103,6 +106,9 @@ class MainActivity : ComponentActivity() {
                         4 -> CreateAccountScreen(
                             authViewModel = authViewModel,
                             onCreate = { _, _, _ ->
+                                profileViewModel.loadProfile()
+                                dashboardViewModel.loadDashboard()
+                                learningViewModel.loadTopics()
                                 screen = 6
                             },
                             onLogin = { screen = 5 },
@@ -110,6 +116,7 @@ class MainActivity : ComponentActivity() {
                                 authViewModel.loginWithGoogle {
                                     profileViewModel.loadProfile()
                                     dashboardViewModel.loadDashboard()
+                                    learningViewModel.loadTopics()
                                     screen = 6
                                 }
                             }
@@ -119,12 +126,14 @@ class MainActivity : ComponentActivity() {
                             onLogin = { _, _ ->
                                 profileViewModel.loadProfile()
                                 dashboardViewModel.loadDashboard()
+                                learningViewModel.loadTopics()
                                 screen = 7
                             },
                             onGoogle = {
                                 authViewModel.loginWithGoogle {
                                     profileViewModel.loadProfile()
                                     dashboardViewModel.loadDashboard()
+                                    learningViewModel.loadTopics()
                                     screen = 7
                                 }
                             },
@@ -133,6 +142,9 @@ class MainActivity : ComponentActivity() {
                         6 -> PersonalizeScreen(
                             authViewModel = authViewModel,
                             onBuildPath = { _, _, _ ->
+                                profileViewModel.loadProfile()
+                                dashboardViewModel.loadDashboard()
+                                learningViewModel.loadTopics()
                                 screen = 7
                             }
                         )
@@ -201,6 +213,9 @@ class MainActivity : ComponentActivity() {
                                 authViewModel.logout {
                                     profileViewModel.clearState()
                                     dashboardViewModel.clearState()
+                                    learningViewModel.clearState()
+                                    aiChatViewModel.clearState()
+                                    quizViewModel.reset()
                                     screen = 5
                                 }
                             },

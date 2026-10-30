@@ -60,5 +60,10 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
             }
         }
     }
+
+    fun clearState() {
+        _topicsState.value = TopicsUiState.Loading
+        _detailState.value = TopicDetailUiState.Loading
+    }
 }
 

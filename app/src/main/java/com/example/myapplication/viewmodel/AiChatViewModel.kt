@@ -78,5 +78,22 @@ class AiChatViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
     }
+
+    fun clearState() {
+        _uiState.value = AiChatUiState(
+            messages = listOf(
+                AiMessageDto(
+                    id = "init_1",
+                    sender = "ai",
+                    text = "Hey explorer! I'm Quest AI, your personal Data Structures & Algorithms ally.\n\nAsk me anything — from binary search invariants to two-pointer techniques!",
+                    codeSnippet = null,
+                    timestamp = "Online",
+                    tags = listOf("AI Tutor", "DSA Ready")
+                )
+            ),
+            isThinking = false,
+            error = null
+        )
+    }
 }
 

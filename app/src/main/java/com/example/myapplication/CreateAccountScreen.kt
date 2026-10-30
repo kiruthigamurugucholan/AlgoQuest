@@ -99,6 +99,18 @@ fun CreateAccountScreen(
     val isLoading = authState is AuthUiState.Loading
     val serverError = (authState as? AuthUiState.Error)?.message
 
+    val isLoggedIn = authViewModel?.isLoggedIn() ?: false
+    androidx.compose.runtime.LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn) {
+            name = ""
+            email = ""
+            password = ""
+            agreed = false
+            localError = ""
+            authViewModel?.clearError()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

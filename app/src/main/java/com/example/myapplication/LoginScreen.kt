@@ -99,6 +99,16 @@ fun LoginScreen(
     val isLoading = authState is AuthUiState.Loading
     val serverError = (authState as? AuthUiState.Error)?.message
 
+    val isLoggedIn = authViewModel?.isLoggedIn() ?: false
+    androidx.compose.runtime.LaunchedEffect(isLoggedIn) {
+        if (!isLoggedIn) {
+            email = ""
+            password = ""
+            localError = ""
+            authViewModel?.clearError()
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -119,7 +129,7 @@ fun LoginScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             LogoMark(48.dp)
-            val greeting = if (userName.isNotBlank()) "is waiting, $userName." else "is waiting."
+            val greeting = if (isLoggedIn && userName.isNotBlank()) "is waiting, $userName." else "is waiting."
             Text(
                 text = "Your next “aha!” moment\n$greeting",
                 modifier = Modifier.fillMaxWidth(),

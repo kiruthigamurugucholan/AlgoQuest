@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.data.model.response.ProfileData
+import com.example.myapplication.data.remote.TokenManager
 import com.example.myapplication.data.repository.ProfileRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,6 +21,7 @@ sealed class ProfileUiState {
 
 class ProfileViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = ProfileRepository(application)
+    private val tokenManager = TokenManager.getInstance(application)
 
     private val _uiState = MutableStateFlow<ProfileUiState>(ProfileUiState.Loading)
     val uiState: StateFlow<ProfileUiState> = _uiState.asStateFlow()
@@ -29,17 +31,40 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun loadProfile() {
+        val currentUserId = tokenManager.getUserId()
+        if (currentUserId.isNullOrBlank()) {
+            Log.w(TAG, "Cannot load profile: User is not authenticated")
+            _uiState.value = ProfileUiState.Empty
+            return
+        }
+
         _uiState.value = ProfileUiState.Loading
         viewModelScope.launch {
-            Log.d(TAG, "loadProfile called, dispatching fetch...")
+            Log.d(TAG, "loadProfile called for user $currentUserId, dispatching fetch...")
             repository.getProfile().fold(
                 onSuccess = { data ->
-                    Log.d(TAG, "Profile loaded successfully for ${data.user.name}")
-                    _uiState.value = ProfileUiState.Success(data)
+                    // Verify that the loaded profile matches the active authenticated user's ID
+                    if (data.user.id.toString() == currentUserId) {
+                        Log.d(TAG, "Profile verified for active user: ${data.user.name} (UID: ${data.user.id})")
+                        _uiState.value = ProfileUiState.Success(data)
+                    } else {
+                        Log.w(TAG, "Profile UID ${data.user.id} does not match active session UID $currentUserId. Refreshing.")
+                        val cached = tokenManager.getUser()
+                        if (cached != null && cached.id.toString() == currentUserId) {
+                            _uiState.value = ProfileUiState.Success(repository.buildCachedProfile(cached))
+                        } else {
+                            _uiState.value = ProfileUiState.Error("Session error. Please log in again.")
+                        }
+                    }
                 },
                 onFailure = { err ->
                     Log.e(TAG, "Failed to load profile: ${err.message}", err)
-                    _uiState.value = ProfileUiState.Error(err.message ?: "Failed to load profile. Please tap Retry.")
+                    val cached = tokenManager.getUser()
+                    if (cached != null && cached.id.toString() == currentUserId) {
+                        _uiState.value = ProfileUiState.Success(repository.buildCachedProfile(cached))
+                    } else {
+                        _uiState.value = ProfileUiState.Error(err.message ?: "Failed to load profile. Please tap Retry.")
+                    }
                 }
             )
         }
@@ -47,7 +72,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
 
     fun clearState() {
         Log.d(TAG, "clearState called - resetting in-memory ProfileUiState")
-        _uiState.value = ProfileUiState.Loading
+        _uiState.value = ProfileUiState.Empty
     }
 
     fun updateName(name: String) {

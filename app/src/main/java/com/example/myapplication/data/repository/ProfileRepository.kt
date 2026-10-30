@@ -16,8 +16,9 @@ import com.google.gson.JsonParser
 import retrofit2.Response
 
 class ProfileRepository(context: Context) {
-    private val api: ApiService = RetrofitClient.getApiService(context)
-    private val tokenManager: TokenManager = TokenManager.getInstance(context)
+    private val appContext: Context = context.applicationContext
+    private val api: ApiService get() = RetrofitClient.getApiService(appContext)
+    private val tokenManager: TokenManager = TokenManager.getInstance(appContext)
 
     companion object {
         private const val TAG = "ProfileRepository"
@@ -29,8 +30,8 @@ class ProfileRepository(context: Context) {
 
         Log.d(TAG, "getProfile initiated. User ID: ${cachedUser?.id}, Token Present: ${!token.isNullOrBlank()}")
 
-        // If no token and no cached user, authentication has not been restored or user is logged out
-        if (token.isNullOrBlank() && cachedUser == null) {
+        // If no token, user is not authenticated
+        if (token.isNullOrBlank()) {
             val errorMsg = "No active authentication session found. Please log in."
             Log.e(TAG, errorMsg)
             return Result.failure(Exception(errorMsg))
@@ -42,24 +43,34 @@ class ProfileRepository(context: Context) {
                 val data = response.body()!!.data!!
                 Log.d(TAG, "Profile successfully loaded from server for user: ${data.user.name} (UID: ${data.user.id})")
 
-                // Update cached user in TokenManager with fresh server-persisted stats
-                cachedUser?.let { current ->
-                    val updated = current.copy(
-                        name = data.user.name,
-                        xp = data.user.xp,
-                        level = data.user.level,
-                        streak = data.user.streak
-                    )
-                    tokenManager.saveAuth(token ?: "", updated)
-                }
+                // Update cached user in TokenManager using the server's authoritative user details
+                val updated = UserDto(
+                    id = data.user.id,
+                    name = data.user.name,
+                    email = data.user.email,
+                    xp = data.user.xp,
+                    level = data.user.level,
+                    streak = data.user.streak,
+                    goal = if (cachedUser?.id == data.user.id) cachedUser.goal else null,
+                    skillLevel = if (cachedUser?.id == data.user.id) cachedUser.skillLevel else null,
+                    dailyMinutes = if (cachedUser?.id == data.user.id) (cachedUser.dailyMinutes ?: 15) else 15
+                )
+                tokenManager.saveAuth(token, updated)
 
                 Result.success(data)
             } else {
                 val errorMsg = parseErrorMessage(response)
                 Log.e(TAG, "Server returned error (HTTP ${response.code()}): $errorMsg")
 
-                // If user is authenticated, fall back to cached profile so the user does not get stuck on a broken screen
-                if (cachedUser != null) {
+                // If unauthorized (401), session is invalid or revoked - clear session completely
+                if (response.code() == 401) {
+                    tokenManager.clear()
+                    RetrofitClient.resetSession()
+                    return Result.failure(Exception("Session expired. Please log in again."))
+                }
+
+                // If user is authenticated and error is non-401, only fall back to cache if it matches the current user
+                if (cachedUser != null && cachedUser.id.toString() == tokenManager.getUserId()) {
                     Log.i(TAG, "Falling back to cached profile for user UID: ${cachedUser.id}")
                     Result.success(buildCachedProfile(cachedUser))
                 } else {
@@ -68,7 +79,7 @@ class ProfileRepository(context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Network exception fetching profile: ${e.message}", e)
-            if (cachedUser != null) {
+            if (cachedUser != null && cachedUser.id.toString() == tokenManager.getUserId()) {
                 Log.i(TAG, "Falling back to cached profile for user UID: ${cachedUser.id} due to network exception")
                 Result.success(buildCachedProfile(cachedUser))
             } else {
@@ -82,7 +93,7 @@ class ProfileRepository(context: Context) {
         }
     }
 
-    private fun buildCachedProfile(user: UserDto): ProfileData {
+    fun buildCachedProfile(user: UserDto): ProfileData {
         val name = user.name.ifBlank { "Explorer" }
         val parts = name.trim().split(" ")
         val initials = parts.mapNotNull { it.firstOrNull()?.toString() }.take(2).joinToString("").uppercase().ifBlank { "AQ" }

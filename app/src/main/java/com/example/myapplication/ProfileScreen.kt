@@ -70,8 +70,16 @@ fun ProfileScreen(
     onLogout: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    LaunchedEffect(viewModel) {
-        viewModel?.loadProfile()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tokenManager = androidx.compose.runtime.remember {
+        com.example.myapplication.data.remote.TokenManager.getInstance(context)
+    }
+    val currentUserId = tokenManager.getUserId()
+
+    LaunchedEffect(currentUserId) {
+        if (!currentUserId.isNullOrBlank()) {
+            viewModel?.loadProfile()
+        }
     }
 
     val uiState by viewModel?.uiState?.collectAsState() ?: androidx.compose.runtime.remember {

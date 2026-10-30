@@ -72,8 +72,17 @@ fun HomeScreen(
     onOpenVisualizer: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    LaunchedEffect(Unit) {
-        dashboardViewModel?.loadDashboard()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val tokenManager = androidx.compose.runtime.remember {
+        com.example.myapplication.data.remote.TokenManager.getInstance(context)
+    }
+    val currentUserId = tokenManager.getUserId()
+    val cachedUser = tokenManager.getUser()
+
+    LaunchedEffect(currentUserId) {
+        if (!currentUserId.isNullOrBlank()) {
+            dashboardViewModel?.loadDashboard()
+        }
     }
 
     val uiState by dashboardViewModel?.uiState?.collectAsState() ?: androidx.compose.runtime.remember {
@@ -82,10 +91,10 @@ fun HomeScreen(
 
     val dashboardData = (uiState as? DashboardUiState.Success)?.data
 
-    val userName = dashboardData?.user?.name ?: "Explorer"
-    val userLevel = dashboardData?.user?.level ?: 1
-    val userStreak = dashboardData?.user?.streak ?: 1
-    val userXp = dashboardData?.user?.xp?.let { String.format("%,d", it) } ?: "0"
+    val userName = dashboardData?.user?.name ?: cachedUser?.name ?: "Explorer"
+    val userLevel = dashboardData?.user?.level ?: cachedUser?.level ?: 1
+    val userStreak = dashboardData?.user?.streak ?: cachedUser?.streak ?: 1
+    val userXp = (dashboardData?.user?.xp ?: cachedUser?.xp)?.let { String.format("%,d", it) } ?: "0"
     val percentile = dashboardData?.user?.percentile ?: "top 90%"
 
     val questTitle = dashboardData?.dailyQuest?.title ?: "Find it. Faster."

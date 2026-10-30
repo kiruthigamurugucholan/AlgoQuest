@@ -6,7 +6,8 @@ import com.example.myapplication.data.remote.ApiService
 import com.example.myapplication.data.remote.RetrofitClient
 
 class DashboardRepository(context: Context) {
-    private val api: ApiService = RetrofitClient.getApiService(context)
+    private val appContext: Context = context.applicationContext
+    private val api: ApiService get() = RetrofitClient.getApiService(appContext)
 
     suspend fun getDashboard(): Result<DashboardData> {
         return try {
