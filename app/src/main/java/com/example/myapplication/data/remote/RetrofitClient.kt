@@ -20,8 +20,8 @@ object RetrofitClient {
 
     fun resetSession() {
         try {
-            okHttpClient?.dispatcher()?.cancelAll()
-            okHttpClient?.connectionPool()?.evictAll()
+            okHttpClient?.dispatcher?.cancelAll()
+            okHttpClient?.connectionPool?.evictAll()
         } catch (_: Exception) {}
         apiServiceInstance = null
         retrofit = null
