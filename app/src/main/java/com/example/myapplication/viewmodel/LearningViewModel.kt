@@ -46,8 +46,28 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         _detailState.value = TopicDetailUiState.Loading
         viewModelScope.launch {
             repository.getTopicDetail(topicId).fold(
-                onSuccess = { data -> _detailState.value = TopicDetailUiState.Success(data) },
+                onSuccess = { data ->
+                    _detailState.value = TopicDetailUiState.Success(data)
+                    checkAndNotifyAvailableQuizzes(data)
+                },
                 onFailure = { err -> _detailState.value = TopicDetailUiState.Error(err.message ?: "Failed to load topic") }
+            )
+        }
+    }
+
+    private fun checkAndNotifyAvailableQuizzes(data: TopicDetailData) {
+        val prefs = com.example.myapplication.reminder.ReminderPreferences.getInstance(getApplication())
+        if (!prefs.isQuizNotificationEnabled()) return
+
+        val availableQuiz = data.lessons.firstOrNull { lesson ->
+            lesson.lessonType.equals("QUIZ", ignoreCase = true) && !lesson.isLocked && !lesson.isCompleted
+        }
+
+        if (availableQuiz != null) {
+            com.example.myapplication.reminder.ReminderScheduler.showQuizNotification(
+                context = getApplication(),
+                quizLessonId = availableQuiz.id,
+                isTest = false
             )
         }
     }
@@ -55,7 +75,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     fun completeLesson(lessonId: Int, topicId: Int, onComplete: () -> Unit) {
         viewModelScope.launch {
             repository.completeLesson(lessonId).onSuccess {
+                com.example.myapplication.reminder.ReminderPreferences.getInstance(getApplication()).markDailyActivityCompleted()
                 loadTopicDetail(topicId)
+                com.example.myapplication.data.repository.ProfileRepository(getApplication())
+                    .getProfile()
+                    .onSuccess { profileData ->
+                        com.example.myapplication.reminder.ReminderScheduler.checkAndNotifyAchievements(getApplication(), profileData)
+                    }
                 onComplete()
             }
         }

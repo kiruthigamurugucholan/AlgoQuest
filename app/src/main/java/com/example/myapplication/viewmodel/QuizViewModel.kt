@@ -63,7 +63,17 @@ class QuizViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 repository.submitQuiz(quizId, answersList).fold(
                     onSuccess = { resultData ->
+                        com.example.myapplication.reminder.ReminderPreferences.getInstance(getApplication()).markDailyActivityCompleted()
                         _uiState.value = QuizUiState.Result(resultData)
+                        if (resultData.passed) {
+                            viewModelScope.launch {
+                                com.example.myapplication.data.repository.ProfileRepository(getApplication())
+                                    .getProfile()
+                                    .onSuccess { profileData ->
+                                        com.example.myapplication.reminder.ReminderScheduler.checkAndNotifyAchievements(getApplication(), profileData)
+                                    }
+                            }
+                        }
                     },
                     onFailure = { err ->
                         _uiState.value = QuizUiState.Error(err.message ?: "Failed to submit quiz")

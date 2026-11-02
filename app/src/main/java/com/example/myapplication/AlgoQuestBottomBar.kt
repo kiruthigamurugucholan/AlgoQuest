@@ -6,6 +6,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +22,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,11 +39,78 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+/** Helper for tab boundaries and index calculation on horizontal swipe */
+object BottomBarSwipeHelper {
+    const val MIN_TAB = 0
+    const val MAX_TAB = 4
+    const val DEFAULT_SWIPE_THRESHOLD_DP = 36f
+
+    fun getNextTabOnSwipeLeft(currentTab: Int): Int {
+        return if (currentTab < MAX_TAB) currentTab + 1 else currentTab
+    }
+
+    fun getNextTabOnSwipeRight(currentTab: Int): Int {
+        return if (currentTab > MIN_TAB) currentTab - 1 else currentTab
+    }
+}
+
+/** Pure drag gesture tracker for unit testability and single-action per swipe */
+class BottomBarSwipeTracker(
+    val swipeThresholdPx: Float = 100f,
+    val onNavigate: (Int) -> Unit
+) {
+    var dragAccumulator: Float = 0f
+        private set
+    var hasSwipedInGesture: Boolean = false
+        private set
+
+    fun onDragStart() {
+        dragAccumulator = 0f
+        hasSwipedInGesture = false
+    }
+
+    fun onDrag(dragAmount: Float, currentTab: Int): Boolean {
+        if (hasSwipedInGesture) return false
+
+        dragAccumulator += dragAmount
+        if (dragAccumulator <= -swipeThresholdPx) {
+            hasSwipedInGesture = true
+            val nextTab = BottomBarSwipeHelper.getNextTabOnSwipeLeft(currentTab)
+            if (nextTab != currentTab) {
+                onNavigate(nextTab)
+                return true
+            }
+            return false
+        } else if (dragAccumulator >= swipeThresholdPx) {
+            hasSwipedInGesture = true
+            val prevTab = BottomBarSwipeHelper.getNextTabOnSwipeRight(currentTab)
+            if (prevTab != currentTab) {
+                onNavigate(prevTab)
+                return true
+            }
+            return false
+        }
+        return false
+    }
+
+    fun onDragEnd() {
+        dragAccumulator = 0f
+        hasSwipedInGesture = false
+    }
+
+    fun onDragCancel() {
+        dragAccumulator = 0f
+        hasSwipedInGesture = false
+    }
+}
 
 private val NavContainerBg = Color(0xFF1B1F38)
 private val ActivePillBg = Color(0xFF2B2550)
@@ -55,6 +127,14 @@ fun AlgoQuestBottomBar(
     onSelectTab: (Int) -> Unit
 ) {
     val containerShape = RoundedCornerShape(32.dp)
+    val density = LocalDensity.current
+    val swipeThresholdPx = with(density) { BottomBarSwipeHelper.DEFAULT_SWIPE_THRESHOLD_DP.dp.toPx() }
+
+    val currentTab by rememberUpdatedState(selectedTab)
+    val currentOnSelectTab by rememberUpdatedState(onSelectTab)
+
+    var dragAccumulator by remember { mutableStateOf(0f) }
+    var hasSwipedInGesture by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -68,6 +148,44 @@ fun AlgoQuestBottomBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(66.dp)
+                .pointerInput(Unit) {
+                    detectHorizontalDragGestures(
+                        onDragStart = {
+                            dragAccumulator = 0f
+                            hasSwipedInGesture = false
+                        },
+                        onDragEnd = {
+                            dragAccumulator = 0f
+                            hasSwipedInGesture = false
+                        },
+                        onDragCancel = {
+                            dragAccumulator = 0f
+                            hasSwipedInGesture = false
+                        },
+                        onHorizontalDrag = { change, dragAmount ->
+                            if (!hasSwipedInGesture) {
+                                dragAccumulator += dragAmount
+                                if (dragAccumulator <= -swipeThresholdPx) {
+                                    hasSwipedInGesture = true
+                                    val nextTab = BottomBarSwipeHelper.getNextTabOnSwipeLeft(currentTab)
+                                    if (nextTab != currentTab) {
+                                        currentOnSelectTab(nextTab)
+                                    }
+                                    change.consume()
+                                } else if (dragAccumulator >= swipeThresholdPx) {
+                                    hasSwipedInGesture = true
+                                    val prevTab = BottomBarSwipeHelper.getNextTabOnSwipeRight(currentTab)
+                                    if (prevTab != currentTab) {
+                                        currentOnSelectTab(prevTab)
+                                    }
+                                    change.consume()
+                                }
+                            } else {
+                                change.consume()
+                            }
+                        }
+                    )
+                }
                 .shadow(
                     elevation = 20.dp,
                     shape = containerShape,

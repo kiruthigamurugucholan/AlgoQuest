@@ -61,6 +61,11 @@ class AiChatViewModel(application: Application) : AndroidViewModel(application) 
                 onSuccess = { aiMsg ->
                     val withAi = _uiState.value.messages.toMutableList().apply { add(aiMsg) }
                     _uiState.value = _uiState.value.copy(messages = withAi, isThinking = false)
+                    com.example.myapplication.data.repository.ProfileRepository(getApplication())
+                        .getProfile()
+                        .onSuccess { profileData ->
+                            com.example.myapplication.reminder.ReminderScheduler.checkAndNotifyAchievements(getApplication(), profileData)
+                        }
                 },
                 onFailure = { err ->
                     // Fallback to local offline explanation if backend is temporarily unreachable

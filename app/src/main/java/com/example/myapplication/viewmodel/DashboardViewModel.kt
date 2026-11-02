@@ -43,6 +43,9 @@ class DashboardViewModel(application: Application) : AndroidViewModel(applicatio
                 onSuccess = { data ->
                     // Verify that dashboard data matches the active user session
                     if (data.user.id.toString() == currentUserId) {
+                        if (data.dailyQuest.isCompleted) {
+                            com.example.myapplication.reminder.ReminderPreferences.getInstance(getApplication()).markDailyActivityCompleted()
+                        }
                         _uiState.value = DashboardUiState.Success(data)
                     } else {
                         Log.w(TAG, "Dashboard user UID ${data.user.id} does not match active UID $currentUserId")

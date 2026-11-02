@@ -37,21 +37,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.ui.components.ErrorRetryCard
 import com.example.myapplication.ui.components.LoadingIndicator
-import com.example.myapplication.ui.theme.AlgoActiveCardBg
-import com.example.myapplication.ui.theme.AlgoBg
-import com.example.myapplication.ui.theme.AlgoBorder
-import com.example.myapplication.ui.theme.AlgoCardBg
-import com.example.myapplication.ui.theme.AlgoCyan
-import com.example.myapplication.ui.theme.AlgoGold
-import com.example.myapplication.ui.theme.AlgoGreen
-import com.example.myapplication.ui.theme.AlgoPink
-import com.example.myapplication.ui.theme.AlgoPurple
-import com.example.myapplication.ui.theme.AlgoPurpleSoft
-import com.example.myapplication.ui.theme.AlgoTextMuted
-import com.example.myapplication.ui.theme.AlgoTextPrimary
-import com.example.myapplication.ui.theme.AlgoTextSecondary
+import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.viewmodel.QuizUiState
 import com.example.myapplication.viewmodel.QuizViewModel
+
+private val AlgoBg: Color @Composable get() = AlgoTheme.colors.bg
+private val AlgoCardBg: Color @Composable get() = AlgoTheme.colors.cardBg
+private val AlgoActiveCardBg: Color @Composable get() = AlgoTheme.colors.activeCardBg
+private val AlgoBorder: Color @Composable get() = AlgoTheme.colors.border
+private val AlgoTextPrimary: Color @Composable get() = AlgoTheme.colors.textPrimary
+private val AlgoTextSecondary: Color @Composable get() = AlgoTheme.colors.textSecondary
+private val AlgoTextMuted: Color @Composable get() = AlgoTheme.colors.textMuted
+private val AlgoCyan: Color @Composable get() = AlgoTheme.colors.cyan
+private val AlgoPurple: Color @Composable get() = AlgoTheme.colors.purple
+private val AlgoPurpleSoft: Color @Composable get() = AlgoTheme.colors.purpleSoft
+private val AlgoGreen: Color @Composable get() = AlgoTheme.colors.green
+private val AlgoGold: Color @Composable get() = AlgoTheme.colors.gold
+private val AlgoPink: Color @Composable get() = AlgoTheme.colors.pink
 
 @Composable
 fun QuizScreen(
@@ -96,7 +98,7 @@ fun QuizScreen(
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(AlgoCardBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                            .border(1.dp, AlgoBorder, CircleShape)
                             .clickable(onClick = onBack),
                         contentAlignment = Alignment.Center
                     ) {
@@ -153,7 +155,7 @@ fun QuizScreen(
                                 .fillMaxWidth()
                                 .clip(cardShape)
                                 .background(AlgoCardBg)
-                                .border(1.dp, Color.White.copy(alpha = 0.06f), cardShape)
+                                .border(1.dp, AlgoBorder, cardShape)
                                 .padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {

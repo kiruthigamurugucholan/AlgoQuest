@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
+import com.example.myapplication.ui.navigation.preventPagerSwipe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -58,32 +59,36 @@ import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.model.response.AiMessageDto
 import com.example.myapplication.viewmodel.AiChatViewModel
 
-private val Bg = Color(0xFF0F1220)
-private val TextPrimary = Color(0xFFF4F6FF)
-private val TextSecondary = Color(0xFFC3CBE2)
-private val TextMuted = Color(0xFF98A2C0)
-private val Cyan = Color(0xFF00D2FF)
-private val Purple = Color(0xFF6C5CE7)
-private val PurpleLight = Color(0xFFA29BFE)
-private val PurpleDark = Color(0xFF5B4BD5)
-private val PurpleSoft = Color(0xFFB5A7FF)
-private val Green = Color(0xFF2ECC71)
-private val CardBg = Color(0xFF1A1F36)
-private val AiBubbleBg = Color(0xFF24213F)
-private val UserBubbleBg = Color(0xFF6C5CE7)
-private val FieldBg = Color(0xFF161A2E)
-private val CodeBg = Color(0xFF121526)
+import com.example.myapplication.ui.theme.AlgoTheme
+
+private val Bg: Color @Composable get() = AlgoTheme.colors.bg
+private val TextPrimary: Color @Composable get() = AlgoTheme.colors.textPrimary
+private val TextSecondary: Color @Composable get() = AlgoTheme.colors.textSecondary
+private val TextMuted: Color @Composable get() = AlgoTheme.colors.textMuted
+private val Cyan: Color @Composable get() = AlgoTheme.colors.cyan
+private val Purple: Color @Composable get() = AlgoTheme.colors.purple
+private val PurpleLight: Color @Composable get() = AlgoTheme.colors.purpleLight
+private val PurpleDark: Color @Composable get() = AlgoTheme.colors.purpleDark
+private val PurpleSoft: Color @Composable get() = AlgoTheme.colors.purpleSoft
+private val Green: Color @Composable get() = AlgoTheme.colors.green
+private val CardBg: Color @Composable get() = AlgoTheme.colors.cardBg
+private val AiBubbleBg: Color @Composable get() = AlgoTheme.colors.activeCardBg
+private val UserBubbleBg: Color @Composable get() = AlgoTheme.colors.purple
+private val FieldBg: Color @Composable get() = AlgoTheme.colors.fieldBg
+private val CodeBg: Color @Composable get() = AlgoTheme.colors.codeBg
+private val BorderColor: Color @Composable get() = AlgoTheme.colors.border
 
 private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
-private val Mono: FontFamily = FontFamily.Monospace
+private val Mono: FontFamily @Composable get() = AlgoTheme.editorFontFamily
 
 @Composable
 fun QuestAiChatScreen(
     viewModel: AiChatViewModel? = null,
     onBack: () -> Unit = {},
     initialQuery: String = "",
-    onSelectTab: (Int) -> Unit = {}
+    onSelectTab: (Int) -> Unit = {},
+    showBottomBar: Boolean = true
 ) {
     val context = LocalContext.current
     val vm = viewModel ?: remember {
@@ -96,6 +101,9 @@ fun QuestAiChatScreen(
     // Load initial history or fire initial query
     LaunchedEffect(Unit) {
         vm.loadHistory()
+    }
+
+    LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank()) {
             vm.sendMessage(initialQuery)
         }
@@ -127,16 +135,17 @@ fun QuestAiChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val textPrimary = TextPrimary
                 Box(
                     modifier = Modifier
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(CardBg)
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                        .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, CircleShape)
                         .clickable(onClick = onBack),
                     contentAlignment = Alignment.Center
                 ) {
-                    IconCanvas(16.dp) { d -> drawChevronLeft(d) }
+                    IconCanvas(16.dp) { d -> drawChevronLeft(d, textPrimary) }
                 }
                 MiniMark(32.dp)
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -249,7 +258,8 @@ fun QuestAiChatScreen(
                     .height(48.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(FieldBg)
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(16.dp))
+                    .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, RoundedCornerShape(16.dp))
+                    .preventPagerSwipe()
                     .padding(horizontal = 14.dp),
                 contentAlignment = Alignment.CenterStart
             ) {
@@ -287,7 +297,9 @@ fun QuestAiChatScreen(
         }
 
         // Shared Bottom Navigation Bar
-        AlgoQuestBottomBar(selectedTab = 3, onSelectTab = onSelectTab)
+        if (showBottomBar) {
+            AlgoQuestBottomBar(selectedTab = 3, onSelectTab = onSelectTab)
+        }
     }
 }
 
@@ -306,7 +318,7 @@ private fun UserMessageItem(msg: AiMessageDto) {
         ) {
             Text(
                 text = msg.text,
-                style = TextStyle(fontFamily = Inter, fontSize = 14.sp, lineHeight = 20.sp, color = TextPrimary)
+                style = TextStyle(fontFamily = Inter, fontSize = 14.sp, lineHeight = 20.sp, color = Color.White)
             )
         }
     }
@@ -323,10 +335,11 @@ private fun AiMessageItem(
             .fillMaxWidth()
             .clip(cardShape)
             .background(AiBubbleBg)
-            .border(1.dp, Color.White.copy(alpha = 0.07f), cardShape)
+            .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.07f) else BorderColor, cardShape)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        val sparkleColor = Cyan
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -338,7 +351,7 @@ private fun AiMessageItem(
                 modifier = Modifier.weight(1f),
                 style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = TextPrimary)
             )
-            IconCanvas(16.dp) { d -> drawSparkles(d, Cyan) }
+            IconCanvas(16.dp) { d -> drawSparkles(d, sparkleColor) }
         }
 
         Text(
@@ -352,7 +365,7 @@ private fun AiMessageItem(
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(12.dp))
                     .background(CodeBg)
-                    .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
+                    .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.06f) else BorderColor, RoundedCornerShape(12.dp))
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
@@ -460,10 +473,10 @@ private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
     Canvas(Modifier.size(size)) { draw(this, density) }
 }
 
-private fun DrawScope.drawChevronLeft(d: Float) {
+private fun DrawScope.drawChevronLeft(d: Float, color: Color) {
     val w = 1.8f * d
-    drawLine(TextPrimary, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
-    drawLine(TextPrimary, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
 private fun DrawScope.drawSend(d: Float) {

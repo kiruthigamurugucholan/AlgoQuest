@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +40,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -67,10 +69,12 @@ private val TextSecondary = Color(0xFFC3CBE2)
 private val TextMuted = Color(0xFF98A2C0)
 private val Purple = Color(0xFF6C5CE7)
 private val PurpleLight = Color(0xFFA29BFE)
+private val PurpleSoft = Color(0xFFC0B6FF)
 private val PurpleDark = Color(0xFF5B4BD5)
 private val Green = Color(0xFF2ECC71)
 private val Gold = Color(0xFFFFB84D)
 private val Pink = Color(0xFFFF5C8A)
+private val CardBg = Color(0xFF1A1F36)
 private val FieldBg = Color(0xFF1A1F36)
 private val ButtonBg = Color(0xFF222943)
 private val BorderColor = Color(0xFF303853)
@@ -94,21 +98,22 @@ fun CreateAccountScreen(
     var password by remember { mutableStateOf(initialPassword) }
     var agreed by remember { mutableStateOf(initialAgreed) }
     var localError by remember { mutableStateOf("") }
+    var showGoogleDialog by remember { mutableStateOf(false) }
 
     val authState by authViewModel?.uiState?.collectAsState() ?: remember { mutableStateOf(AuthUiState.Idle) }
     val isLoading = authState is AuthUiState.Loading
-    val serverError = (authState as? AuthUiState.Error)?.message
+    val serverError = (authState as? AuthUiState.Error)?.message?.takeIf {
+        !it.contains("Google", ignoreCase = true)
+    }
 
     val isLoggedIn = authViewModel?.isLoggedIn() ?: false
-    androidx.compose.runtime.LaunchedEffect(isLoggedIn) {
-        if (!isLoggedIn) {
-            name = ""
-            email = ""
-            password = ""
-            agreed = false
-            localError = ""
-            authViewModel?.clearError()
-        }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        name = ""
+        email = ""
+        password = ""
+        agreed = false
+        localError = ""
+        authViewModel?.clearError()
     }
 
     Column(
@@ -159,7 +164,7 @@ fun CreateAccountScreen(
             label = "Your name",
             value = name,
             onValueChange = { name = it; localError = "" },
-            placeholder = "Alex Morgan",
+            placeholder = "Enter your full name",
             icon = { d -> drawUser(d) },
             keyboardType = KeyboardType.Text
         )
@@ -167,7 +172,7 @@ fun CreateAccountScreen(
             label = "Email address",
             value = email,
             onValueChange = { email = it; localError = "" },
-            placeholder = "alex.morgan@email.com",
+            placeholder = "Enter your email",
             icon = { d -> drawMail(d) },
             keyboardType = KeyboardType.Email
         )
@@ -313,7 +318,9 @@ fun CreateAccountScreen(
                 .clip(buttonShape)
                 .background(ButtonBg)
                 .border(1.dp, BorderColor, buttonShape)
-                .clickable(onClick = onGoogle),
+                .clickable {
+                    showGoogleDialog = true
+                },
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -354,6 +361,62 @@ fun CreateAccountScreen(
             )
         )
     }
+
+    if (showGoogleDialog) {
+        AlertDialog(
+            onDismissRequest = { showGoogleDialog = false },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    IconCanvas(20.dp) { d -> drawChrome(d) }
+                    Text(
+                        text = "Google Sign-In",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 18.sp,
+                            color = TextPrimary
+                        )
+                    )
+                }
+            },
+            text = {
+                Text(
+                    text = "Google Sign-In is coming soon! Please log in using your email and password.",
+                    style = TextStyle(
+                        fontFamily = Inter,
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        lineHeight = 20.sp
+                    )
+                )
+            },
+            confirmButton = {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Purple)
+                        .clickable { showGoogleDialog = false }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Got it",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = Color.White
+                        )
+                    )
+                }
+            },
+            containerColor = CardBg,
+            shape = RoundedCornerShape(20.dp)
+        )
+    }
 }
 
 @Composable
@@ -366,6 +429,8 @@ private fun FormField(
     keyboardType: KeyboardType,
     isPassword: Boolean = false
 ) {
+    var passwordVisible by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = label,
@@ -403,10 +468,26 @@ private fun FormField(
                     textStyle = TextStyle(fontFamily = Inter, fontSize = 14.sp, color = TextPrimary),
                     cursorBrush = SolidColor(Purple),
                     keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-                    visualTransformation = if (isPassword) PasswordVisualTransformation()
+                    visualTransformation = if (isPassword && !passwordVisible) PasswordVisualTransformation()
                     else VisualTransformation.None,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+            if (isPassword) {
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clickable { passwordVisible = !passwordVisible },
+                    contentAlignment = Alignment.Center
+                ) {
+                    IconCanvas(18.dp) { d ->
+                        if (passwordVisible) {
+                            drawEyeOpen(d)
+                        } else {
+                            drawEyeClosed(d)
+                        }
+                    }
+                }
             }
         }
     }
@@ -481,6 +562,42 @@ private fun DrawScope.drawLock(d: Float) {
         topLeft = Offset(5.5f * d, 2.5f * d), size = Size(7f * d, 7f * d),
         style = lineStroke(d)
     )
+}
+
+private fun DrawScope.drawEyeOpen(d: Float) {
+    val c = PurpleSoft
+    val upper = Path().apply {
+        moveTo(1.5f * d, 9f * d)
+        quadraticTo(9f * d, 2.5f * d, 16.5f * d, 9f * d)
+    }
+    drawPath(upper, c, style = lineStroke(d, 1.4f))
+
+    val lower = Path().apply {
+        moveTo(1.5f * d, 9f * d)
+        quadraticTo(9f * d, 15.5f * d, 16.5f * d, 9f * d)
+    }
+    drawPath(lower, c, style = lineStroke(d, 1.4f))
+
+    drawCircle(c, radius = 3.2f * d, center = Offset(9f * d, 9f * d), style = lineStroke(d, 1.4f))
+    drawCircle(c, radius = 1.3f * d, center = Offset(9f * d, 9f * d))
+}
+
+private fun DrawScope.drawEyeClosed(d: Float) {
+    val c = TextMuted
+    val upper = Path().apply {
+        moveTo(1.5f * d, 9f * d)
+        quadraticTo(9f * d, 2.5f * d, 16.5f * d, 9f * d)
+    }
+    drawPath(upper, c, style = lineStroke(d, 1.4f))
+
+    val lower = Path().apply {
+        moveTo(1.5f * d, 9f * d)
+        quadraticTo(9f * d, 15.5f * d, 16.5f * d, 9f * d)
+    }
+    drawPath(lower, c, style = lineStroke(d, 1.4f))
+
+    drawCircle(c, radius = 3.2f * d, center = Offset(9f * d, 9f * d), style = lineStroke(d, 1.4f))
+    drawLine(c, Offset(2.5f * d, 15.5f * d), Offset(15.5f * d, 2.5f * d), 1.6f * d, StrokeCap.Round)
 }
 
 private fun DrawScope.drawCircleCheck(d: Float, color: Color) {

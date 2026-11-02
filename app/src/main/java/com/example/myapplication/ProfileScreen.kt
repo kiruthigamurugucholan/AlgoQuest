@@ -19,11 +19,15 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -43,33 +47,40 @@ import com.example.myapplication.data.model.response.ProfileData
 import com.example.myapplication.ui.components.ErrorRetryCard
 import com.example.myapplication.ui.components.LoadingIndicator
 import com.example.myapplication.viewmodel.ProfileUiState
+import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.viewmodel.ProfileViewModel
 
-private val Bg = Color(0xFF0F1220)
-private val TextPrimary = Color(0xFFF4F6FF)
-private val TextSecondary = Color(0xFFC3CBE2)
-private val TextMuted = Color(0xFF98A2C0)
-private val Cyan = Color(0xFF00D2FF)
-private val Purple = Color(0xFF6C5CE7)
-private val PurpleLight = Color(0xFFA29BFE)
-private val PurpleDark = Color(0xFF5B4BD5)
-private val PurpleSoft = Color(0xFFB5A7FF)
-private val Green = Color(0xFF2ECC71)
-private val Gold = Color(0xFFFFB84D)
-private val CardBg = Color(0xFF1A1F36)
-private val ActiveCardBg = Color(0xFF25213E)
+private val Bg: Color @Composable get() = AlgoTheme.colors.bg
+private val TextPrimary: Color @Composable get() = AlgoTheme.colors.textPrimary
+private val TextSecondary: Color @Composable get() = AlgoTheme.colors.textSecondary
+private val TextMuted: Color @Composable get() = AlgoTheme.colors.textMuted
+private val Cyan: Color @Composable get() = AlgoTheme.colors.cyan
+private val Purple: Color @Composable get() = AlgoTheme.colors.purple
+private val PurpleLight: Color @Composable get() = AlgoTheme.colors.purpleLight
+private val PurpleDark: Color @Composable get() = AlgoTheme.colors.purpleDark
+private val PurpleSoft: Color @Composable get() = AlgoTheme.colors.purpleSoft
+private val Green: Color @Composable get() = AlgoTheme.colors.green
+private val Gold: Color @Composable get() = AlgoTheme.colors.gold
+private val Pink: Color @Composable get() = AlgoTheme.colors.pink
+private val CardBg: Color @Composable get() = AlgoTheme.colors.cardBg
+private val ActiveCardBg: Color @Composable get() = AlgoTheme.colors.activeCardBg
+private val BorderColor: Color @Composable get() = AlgoTheme.colors.border
 
 private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
-private val Mono: FontFamily = FontFamily.Monospace
+private val Mono: FontFamily @Composable get() = AlgoTheme.editorFontFamily
 
 @Composable
 fun ProfileScreen(
     viewModel: ProfileViewModel? = null,
     onBack: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
     onLogout: () -> Unit = {},
-    onSelectTab: (Int) -> Unit = {}
+    onSelectTab: (Int) -> Unit = {},
+    showBottomBar: Boolean = true
 ) {
+    var showLogoutDialog by remember { mutableStateOf(false) }
+
     val context = androidx.compose.ui.platform.LocalContext.current
     val tokenManager = androidx.compose.runtime.remember {
         com.example.myapplication.data.remote.TokenManager.getInstance(context)
@@ -128,17 +139,104 @@ fun ProfileScreen(
                     }
                 }
                 is ProfileUiState.Success -> {
-                    ProfileContent(
-                        data = state.profile,
-                        onBack = onBack,
-                        onLogout = onLogout
-                    )
+                    if (state.profile.user.id.toString() == currentUserId) {
+                        ProfileContent(
+                            data = state.profile,
+                            onBack = onBack,
+                            onOpenSettings = onOpenSettings,
+                            onLogoutClick = { showLogoutDialog = true }
+                        )
+                    } else {
+                        LaunchedEffect(currentUserId) {
+                            viewModel?.loadProfile()
+                        }
+                        LoadingIndicator(text = "Loading your explorer profile...")
+                    }
                 }
             }
         }
 
         // Shared Bottom Navigation Bar
-        AlgoQuestBottomBar(selectedTab = 4, onSelectTab = onSelectTab)
+        if (showBottomBar) {
+            AlgoQuestBottomBar(selectedTab = 4, onSelectTab = onSelectTab)
+        }
+    }
+
+    if (showLogoutDialog) {
+        AlertDialog(
+            onDismissRequest = { showLogoutDialog = false },
+            title = {
+                Text(
+                    text = "Confirm Logout",
+                    style = TextStyle(
+                        fontFamily = Poppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 18.sp,
+                        color = TextPrimary
+                    )
+                )
+            },
+            text = {
+                Text(
+                    text = "Are you sure you want to log out of your account?",
+                    style = TextStyle(
+                        fontFamily = Inter,
+                        fontSize = 14.sp,
+                        color = TextSecondary,
+                        lineHeight = 20.sp
+                    )
+                )
+            },
+            confirmButton = {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Pink.copy(alpha = 0.15f))
+                        .border(1.dp, Pink.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                        .clickable {
+                            showLogoutDialog = false
+                            onLogout()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Confirm Logout",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            color = Pink
+                        )
+                    )
+                }
+            },
+            dismissButton = {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.05f) else BorderColor.copy(alpha = 0.3f))
+                        .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.1f) else BorderColor, RoundedCornerShape(12.dp))
+                        .clickable {
+                            showLogoutDialog = false
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Cancel",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            color = TextSecondary
+                        )
+                    )
+                }
+            },
+            containerColor = CardBg,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 
@@ -146,7 +244,8 @@ fun ProfileScreen(
 private fun ProfileContent(
     data: ProfileData,
     onBack: () -> Unit,
-    onLogout: () -> Unit
+    onOpenSettings: () -> Unit = {},
+    onLogoutClick: () -> Unit
 ) {
     val user = data.user
     val skills = data.skills
@@ -165,6 +264,7 @@ private fun ProfileContent(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            val textPrimary = TextPrimary
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
@@ -174,11 +274,11 @@ private fun ProfileContent(
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(CardBg)
-                        .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                        .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, CircleShape)
                         .clickable(onClick = onBack),
                     contentAlignment = Alignment.Center
                 ) {
-                    IconCanvas(16.dp) { d -> drawChevronLeft(d) }
+                    IconCanvas(16.dp) { d -> drawChevronLeft(d, textPrimary) }
                 }
                 Text(
                     text = "Explorer Profile",
@@ -190,7 +290,12 @@ private fun ProfileContent(
                     )
                 )
             }
-            Badge("SETTINGS", CardBg, TextSecondary)
+            Badge(
+                text = "SETTINGS",
+                background = CardBg,
+                textColor = TextSecondary,
+                onClick = onOpenSettings
+            )
         }
 
         // Profile Identity Header
@@ -304,7 +409,7 @@ private fun ProfileContent(
                 .clip(RoundedCornerShape(16.dp))
                 .background(CardBg)
                 .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(16.dp))
-                .clickable(onClick = onLogout),
+                .clickable(onClick = onLogoutClick),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -377,7 +482,7 @@ private fun BadgeItem(badge: AchievementDto, modifier: Modifier = Modifier) {
         modifier = modifier
             .clip(shape)
             .background(if (badge.isUnlocked) ActiveCardBg else CardBg)
-            .border(1.dp, if (badge.isUnlocked) Purple.copy(alpha = 0.3f) else Color.White.copy(alpha = 0.04f), shape)
+            .border(1.dp, if (badge.isUnlocked) Purple.copy(alpha = 0.3f) else (if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.04f) else BorderColor), shape)
             .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -421,12 +526,21 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun Badge(text: String, background: Color, textColor: Color) {
+private fun Badge(
+    text: String,
+    background: Color,
+    textColor: Color,
+    onClick: (() -> Unit)? = null
+) {
     Box(
         modifier = Modifier
             .height(24.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(background)
+            .then(
+                if (onClick != null) Modifier.clickable(onClick = onClick)
+                else Modifier
+            )
             .padding(horizontal = 8.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -444,10 +558,10 @@ private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
     Canvas(Modifier.size(size)) { draw(this, density) }
 }
 
-private fun DrawScope.drawChevronLeft(d: Float) {
+private fun DrawScope.drawChevronLeft(d: Float, color: Color) {
     val w = 1.8f * d
-    drawLine(TextPrimary, androidx.compose.ui.geometry.Offset(11f * d, 4f * d), androidx.compose.ui.geometry.Offset(5f * d, 10f * d), w, StrokeCap.Round)
-    drawLine(TextPrimary, androidx.compose.ui.geometry.Offset(5f * d, 10f * d), androidx.compose.ui.geometry.Offset(11f * d, 16f * d), w, StrokeCap.Round)
+    drawLine(color, androidx.compose.ui.geometry.Offset(11f * d, 4f * d), androidx.compose.ui.geometry.Offset(5f * d, 10f * d), w, StrokeCap.Round)
+    drawLine(color, androidx.compose.ui.geometry.Offset(5f * d, 10f * d), androidx.compose.ui.geometry.Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)

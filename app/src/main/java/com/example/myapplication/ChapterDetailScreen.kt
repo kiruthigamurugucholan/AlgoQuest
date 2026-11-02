@@ -44,20 +44,22 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.viewmodel.LearningViewModel
 import com.example.myapplication.viewmodel.TopicDetailUiState
 
-private val Bg = Color(0xFF0F1220)
-private val TextPrimary = Color(0xFFF4F6FF)
-private val TextSecondary = Color(0xFFC3CBE2)
-private val TextMuted = Color(0xFF98A2C0)
-private val Cyan = Color(0xFF00D2FF)
-private val Purple = Color(0xFF6C5CE7)
-private val PurpleSoft = Color(0xFFB5A7FF)
-private val Green = Color(0xFF2ECC71)
-private val Gold = Color(0xFFFFB84D)
-private val CardBg = Color(0xFF1A1F36)
-private val ActiveCardBg = Color(0xFF25213E)
+private val Bg: Color @Composable get() = AlgoTheme.colors.bg
+private val TextPrimary: Color @Composable get() = AlgoTheme.colors.textPrimary
+private val TextSecondary: Color @Composable get() = AlgoTheme.colors.textSecondary
+private val TextMuted: Color @Composable get() = AlgoTheme.colors.textMuted
+private val Cyan: Color @Composable get() = AlgoTheme.colors.cyan
+private val Purple: Color @Composable get() = AlgoTheme.colors.purple
+private val PurpleSoft: Color @Composable get() = AlgoTheme.colors.purpleSoft
+private val Green: Color @Composable get() = AlgoTheme.colors.green
+private val Gold: Color @Composable get() = AlgoTheme.colors.gold
+private val CardBg: Color @Composable get() = AlgoTheme.colors.cardBg
+private val ActiveCardBg: Color @Composable get() = AlgoTheme.colors.activeCardBg
+private val CardBorder: Color @Composable get() = AlgoTheme.colors.border
 
 private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
@@ -147,16 +149,17 @@ fun ChapterDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val chevronColor = TextPrimary
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(CircleShape)
                             .background(CardBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                            .border(1.dp, CardBorder, CircleShape)
                             .clickable(onClick = onBack),
                         contentAlignment = Alignment.Center
                     ) {
-                        IconCanvas(16.dp) { d -> drawChevronLeft(d) }
+                        IconCanvas(16.dp) { d -> drawChevronLeft(d, chevronColor) }
                     }
                     Text(
                         text = "Chapter Details",
@@ -178,7 +181,7 @@ fun ChapterDetailScreen(
                     .fillMaxWidth()
                     .clip(heroShape)
                     .background(ActiveCardBg)
-                    .border(1.dp, Color.White.copy(alpha = 0.08f), heroShape)
+                    .border(1.dp, CardBorder, heroShape)
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
@@ -252,18 +255,19 @@ fun ChapterDetailScreen(
                         Text(text = "Visualize Lab", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color.White))
                     }
 
+                    val aiSparkleColor = PurpleSoft
                     Row(
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(CardBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+                            .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
                             .clickable(onClick = onAskAi),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconCanvas(16.dp) { d -> drawSparkles(d, PurpleSoft) }
+                        IconCanvas(16.dp) { d -> drawSparkles(d, aiSparkleColor) }
                         Spacer(Modifier.width(6.dp))
                         Text(text = "Ask AI Ally", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TextPrimary))
                     }
@@ -316,7 +320,7 @@ private fun LessonRowItem(
                 when {
                     lesson.isCurrent -> Cyan
                     lesson.isCompleted -> Green.copy(alpha = 0.3f)
-                    else -> Color.White.copy(alpha = 0.05f)
+                    else -> CardBorder
                 },
                 cardShape
             )
@@ -328,8 +332,13 @@ private fun LessonRowItem(
         val iconBg = when {
             lesson.isCompleted -> Green.copy(alpha = 0.15f)
             lesson.isCurrent -> Cyan.copy(alpha = 0.15f)
-            else -> Color.White.copy(alpha = 0.05f)
+            else -> CardBorder.copy(alpha = 0.2f)
         }
+
+        val checkColor = Green
+        val playColor = Cyan
+        val lockColor = TextMuted
+        val chevronColor = TextSecondary
 
         Box(
             modifier = Modifier
@@ -339,9 +348,9 @@ private fun LessonRowItem(
             contentAlignment = Alignment.Center
         ) {
             when {
-                lesson.isCompleted -> IconCanvas(16.dp) { d -> drawCheck(d) }
-                lesson.isCurrent -> IconCanvas(16.dp) { d -> drawPlay(d) }
-                else -> IconCanvas(14.dp) { d -> drawLock(d) }
+                lesson.isCompleted -> IconCanvas(16.dp) { d -> drawCheck(d, checkColor) }
+                lesson.isCurrent -> IconCanvas(16.dp) { d -> drawPlay(d, playColor) }
+                else -> IconCanvas(14.dp) { d -> drawLock(d, lockColor) }
             }
         }
 
@@ -376,7 +385,7 @@ private fun LessonRowItem(
             }
         }
 
-        IconCanvas(14.dp) { d -> drawChevronRight(d) }
+        IconCanvas(14.dp) { d -> drawChevronRight(d, chevronColor) }
     }
 }
 
@@ -412,38 +421,37 @@ private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
 private fun lineStroke(d: Float, w: Float = 1.5f) =
     Stroke(width = w * d, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-private fun DrawScope.drawChevronLeft(d: Float) {
+private fun DrawScope.drawChevronLeft(d: Float, color: Color) {
     val w = 1.8f * d
-    drawLine(TextPrimary, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
-    drawLine(TextPrimary, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
-private fun DrawScope.drawChevronRight(d: Float) {
+private fun DrawScope.drawChevronRight(d: Float, color: Color) {
     val w = 1.6f * d
-    drawLine(TextSecondary, Offset(5f * d, 3f * d), Offset(10f * d, 8f * d), w, StrokeCap.Round)
-    drawLine(TextSecondary, Offset(10f * d, 8f * d), Offset(5f * d, 13f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5f * d, 3f * d), Offset(10f * d, 8f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(10f * d, 8f * d), Offset(5f * d, 13f * d), w, StrokeCap.Round)
 }
 
-private fun DrawScope.drawCheck(d: Float) {
+private fun DrawScope.drawCheck(d: Float, color: Color) {
     val w = 2f * d
-    drawLine(Green, Offset(4f * d, 9f * d), Offset(7f * d, 12f * d), w, StrokeCap.Round)
-    drawLine(Green, Offset(7f * d, 12f * d), Offset(12f * d, 4f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(4f * d, 9f * d), Offset(7f * d, 12f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(7f * d, 12f * d), Offset(12f * d, 4f * d), w, StrokeCap.Round)
 }
 
-private fun DrawScope.drawPlay(d: Float) {
+private fun DrawScope.drawPlay(d: Float, color: Color) {
     val path = Path().apply {
         moveTo(6f * d, 4f * d)
         lineTo(13f * d, 8f * d)
         lineTo(6f * d, 12f * d)
         close()
     }
-    drawPath(path, Cyan)
+    drawPath(path, color)
 }
 
-private fun DrawScope.drawLock(d: Float) {
-    val c = TextMuted
-    drawRect(c, Offset(3f * d, 6f * d), Size(8f * d, 6f * d), style = lineStroke(d, 1.2f))
-    drawArc(c, 180f, 180f, false, Offset(4.5f * d, 2.5f * d), Size(5f * d, 5f * d), style = lineStroke(d, 1.2f))
+private fun DrawScope.drawLock(d: Float, color: Color) {
+    drawRect(color, Offset(3f * d, 6f * d), Size(8f * d, 6f * d), style = lineStroke(d, 1.2f))
+    drawArc(color, 180f, 180f, false, Offset(4.5f * d, 2.5f * d), Size(5f * d, 5f * d), style = lineStroke(d, 1.2f))
 }
 
 private fun DrawScope.drawEye(d: Float) {

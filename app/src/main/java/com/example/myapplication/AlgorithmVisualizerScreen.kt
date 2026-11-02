@@ -31,6 +31,8 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import com.example.myapplication.ui.navigation.consumeNestedHorizontalScroll
+import com.example.myapplication.ui.navigation.preventPagerSwipe
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -60,33 +62,37 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.algorithm.CodeLanguage
+import com.example.myapplication.ui.theme.AlgoTheme
+import com.example.myapplication.ui.theme.highlightCodeLine
 import com.example.myapplication.viewmodel.VisualizerViewModel
 
-private val Bg = Color(0xFF0F1220)
-private val TextPrimary = Color(0xFFF4F6FF)
-private val TextSecondary = Color(0xFFC3CBE2)
-private val TextMuted = Color(0xFF98A2C0)
-private val Cyan = Color(0xFF00D2FF)
-private val Purple = Color(0xFF6C5CE7)
-private val PurpleSoft = Color(0xFFB5A7FF)
-private val Green = Color(0xFF2ECC71)
-private val Gold = Color(0xFFFFB84D)
+private val Bg: Color @Composable get() = AlgoTheme.colors.bg
+private val TextPrimary: Color @Composable get() = AlgoTheme.colors.textPrimary
+private val TextSecondary: Color @Composable get() = AlgoTheme.colors.textSecondary
+private val TextMuted: Color @Composable get() = AlgoTheme.colors.textMuted
+private val Cyan: Color @Composable get() = AlgoTheme.colors.cyan
+private val Purple: Color @Composable get() = AlgoTheme.colors.purple
+private val PurpleSoft: Color @Composable get() = AlgoTheme.colors.purpleSoft
+private val Green: Color @Composable get() = AlgoTheme.colors.green
+private val Gold: Color @Composable get() = AlgoTheme.colors.gold
 private val RedAlert = Color(0xFFFF6B6B)
-private val CardBg = Color(0xFF1A1F36)
-private val SelectedBg = Color(0xFF25213E)
-private val EliminatedColor = Color(0xFF202336)
-private val CodeBg = Color(0xFF131728)
+private val CardBg: Color @Composable get() = AlgoTheme.colors.cardBg
+private val SelectedBg: Color @Composable get() = AlgoTheme.colors.selectedBg
+private val EliminatedColor: Color @Composable get() = AlgoTheme.colors.eliminated
+private val CodeBg: Color @Composable get() = AlgoTheme.colors.codeBg
+private val BorderColor: Color @Composable get() = AlgoTheme.colors.border
 
 private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
-private val Mono: FontFamily = FontFamily.Monospace
+private val Mono: FontFamily @Composable get() = AlgoTheme.editorFontFamily
 
 @Composable
 fun AlgorithmVisualizerScreen(
     viewModel: VisualizerViewModel? = null,
     onBack: () -> Unit = {},
     onAskAi: (query: String) -> Unit = {},
-    onSelectTab: (Int) -> Unit = {}
+    onSelectTab: (Int) -> Unit = {},
+    showBottomBar: Boolean = true
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val vm = viewModel ?: remember {
@@ -144,6 +150,9 @@ fun AlgorithmVisualizerScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // Header bar
+                val textPrimary = TextPrimary
+                val textSecondary = TextSecondary
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -158,11 +167,11 @@ fun AlgorithmVisualizerScreen(
                                 .size(36.dp)
                                 .clip(CircleShape)
                                 .background(CardBg)
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), CircleShape)
+                                .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, CircleShape)
                                 .clickable(onClick = onBack),
                             contentAlignment = Alignment.Center
                         ) {
-                            IconCanvas(16.dp) { d -> drawChevronLeft(d) }
+                            IconCanvas(16.dp) { d -> drawChevronLeft(d, textPrimary) }
                         }
                         Column {
                             Text(
@@ -310,10 +319,14 @@ fun AlgorithmVisualizerScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(10.dp))
-                        .background(Color.Black.copy(alpha = 0.35f))
+                        .background(if (AlgoTheme.colors.isDark) Color.Black.copy(alpha = 0.35f) else CodeBg)
+                        .border(1.dp, if (AlgoTheme.colors.isDark) Color.Transparent else BorderColor, RoundedCornerShape(10.dp))
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
+                    val syntaxColors = AlgoTheme.syntaxColors
+                    val editorFontFamily = Mono
+
                     lines.forEachIndexed { index, lineText ->
                         val lineNum = index + 1
                         val isExecuting = lineNum == activeLineNum
@@ -322,7 +335,7 @@ fun AlgorithmVisualizerScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(if (isExecuting) Purple.copy(alpha = 0.35f) else Color.Transparent)
+                                .background(if (isExecuting) syntaxColors.activeLineBg else Color.Transparent)
                                 .padding(horizontal = 6.dp, vertical = 2.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -331,10 +344,10 @@ fun AlgorithmVisualizerScreen(
                             Text(
                                 text = "$lineNum".padStart(2, ' '),
                                 style = TextStyle(
-                                    fontFamily = Mono,
+                                    fontFamily = editorFontFamily,
                                     fontSize = 11.sp,
                                     fontWeight = if (isExecuting) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isExecuting) Cyan else TextMuted
+                                    color = if (isExecuting) syntaxColors.activeLineNumber else syntaxColors.lineNumber
                                 )
                             )
 
@@ -344,20 +357,19 @@ fun AlgorithmVisualizerScreen(
                                     modifier = Modifier
                                         .size(6.dp)
                                         .clip(CircleShape)
-                                        .background(Cyan)
+                                        .background(syntaxColors.activeLineIndicator)
                                 )
                             } else {
                                 Spacer(modifier = Modifier.width(6.dp))
                             }
 
-                            // Code line content
+                            // Code line content with Syntax Highlighting
                             Text(
-                                text = lineText,
+                                text = highlightCodeLine(lineText, syntaxColors),
                                 style = TextStyle(
-                                    fontFamily = Mono,
+                                    fontFamily = editorFontFamily,
                                     fontSize = 11.sp,
-                                    fontWeight = if (isExecuting) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (isExecuting) TextPrimary else TextSecondary
+                                    fontWeight = if (isExecuting) FontWeight.Bold else FontWeight.Normal
                                 )
                             )
                         }
@@ -370,7 +382,7 @@ fun AlgorithmVisualizerScreen(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
                         .background(CardBg)
-                        .border(1.dp, Color.White.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                        .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.05f) else BorderColor, RoundedCornerShape(8.dp))
                         .clickable { isCodeEditorExpanded = !isCodeEditorExpanded }
                         .padding(8.dp),
                     contentAlignment = Alignment.Center
@@ -393,7 +405,8 @@ fun AlgorithmVisualizerScreen(
                                 .height(120.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(CodeBg)
-                                .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                                .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, RoundedCornerShape(8.dp))
+                                .preventPagerSwipe()
                                 .padding(8.dp)
                         ) {
                             BasicTextField(
@@ -476,6 +489,7 @@ fun AlgorithmVisualizerScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .background(CodeBg)
                             .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .preventPagerSwipe()
                             .padding(horizontal = 10.dp),
                         contentAlignment = Alignment.CenterStart
                     ) {
@@ -500,6 +514,7 @@ fun AlgorithmVisualizerScreen(
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(CodeBg)
                                 .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                .preventPagerSwipe()
                                 .padding(horizontal = 10.dp),
                             contentAlignment = Alignment.CenterStart
                         ) {
@@ -706,6 +721,7 @@ fun AlgorithmVisualizerScreen(
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(CodeBg.copy(alpha = 0.85f))
+                            .consumeNestedHorizontalScroll()
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 8.dp, vertical = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -740,11 +756,12 @@ fun AlgorithmVisualizerScreen(
                         .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(12.dp))
                         .padding(12.dp)
                 ) {
+                    val statusSparkleColor = if (currentFrame.isFound) Green else Cyan
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconCanvas(18.dp) { d -> drawSparkles(d, if (currentFrame.isFound) Green else Cyan) }
+                        IconCanvas(18.dp) { d -> drawSparkles(d, statusSparkleColor) }
                         Text(
                             text = currentFrame.description,
                             style = TextStyle(
@@ -763,8 +780,8 @@ fun AlgorithmVisualizerScreen(
                     horizontalArrangement = Arrangement.SpaceEvenly,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    ControlBtn(icon = { d -> drawReset(d) }, onClick = { vm.reset() })
-                    ControlBtn(icon = { d -> drawStepPrev(d) }, enabled = currentStepIdx > 0, onClick = { vm.stepPrev() })
+                    ControlBtn(icon = { d -> drawReset(d, textSecondary) }, onClick = { vm.reset() })
+                    ControlBtn(icon = { d -> drawStepPrev(d, textSecondary) }, enabled = currentStepIdx > 0, onClick = { vm.stepPrev() })
                     Box(
                         modifier = Modifier
                             .size(48.dp)
@@ -775,13 +792,13 @@ fun AlgorithmVisualizerScreen(
                     ) {
                         IconCanvas(20.dp) { d -> if (isPlaying) drawPause(d) else drawPlay(d) }
                     }
-                    ControlBtn(icon = { d -> drawStepNext(d) }, enabled = currentStepIdx < frames.size - 1, onClick = { vm.stepNext() })
+                    ControlBtn(icon = { d -> drawStepNext(d, textSecondary) }, enabled = currentStepIdx < frames.size - 1, onClick = { vm.stepNext() })
                     Box(
                         modifier = Modifier
                             .height(34.dp)
                             .clip(RoundedCornerShape(8.dp))
                             .background(CardBg)
-                            .border(1.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                            .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, RoundedCornerShape(8.dp))
                             .clickable { vm.toggleSpeed() }
                             .padding(horizontal = 8.dp),
                         contentAlignment = Alignment.Center
@@ -827,6 +844,7 @@ fun AlgorithmVisualizerScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val bannerSparkleColor = PurpleSoft
                 Box(
                     modifier = Modifier
                         .size(38.dp)
@@ -834,7 +852,7 @@ fun AlgorithmVisualizerScreen(
                         .background(Purple.copy(alpha = 0.25f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    IconCanvas(18.dp) { d -> drawSparkles(d, PurpleSoft) }
+                    IconCanvas(18.dp) { d -> drawSparkles(d, bannerSparkleColor) }
                 }
                 Column(
                     modifier = Modifier.weight(1f),
@@ -855,12 +873,14 @@ fun AlgorithmVisualizerScreen(
                         style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
                     )
                 }
-                IconCanvas(14.dp) { d -> drawChevronRight(d) }
+                IconCanvas(14.dp) { d -> drawChevronRight(d, textSecondary) }
             }
         }
 
         // Shared Bottom Navigation Bar
-        AlgoQuestBottomBar(selectedTab = 2, onSelectTab = onSelectTab)
+        if (showBottomBar) {
+            AlgoQuestBottomBar(selectedTab = 2, onSelectTab = onSelectTab)
+        }
     }
 
     // Gemini AI Ally Bottom Sheet / Panel
@@ -892,11 +912,12 @@ fun AlgorithmVisualizerScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val sheetSparkleColor = PurpleSoft
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconCanvas(18.dp) { d -> drawSparkles(d, PurpleSoft) }
+                        IconCanvas(18.dp) { d -> drawSparkles(d, sheetSparkleColor) }
                         Text(
                             text = "Quest AI Ally • Code & Step Analysis",
                             style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = TextPrimary)
@@ -1162,51 +1183,48 @@ private fun IconCanvas(size: Dp, draw: DrawScope.(Float) -> Unit) {
 private fun lineStroke(d: Float, w: Float = 1.5f) =
     Stroke(width = w * d, cap = StrokeCap.Round, join = StrokeJoin.Round)
 
-private fun DrawScope.drawChevronLeft(d: Float) {
+private fun DrawScope.drawChevronLeft(d: Float, color: Color) {
     val w = 1.8f * d
-    drawLine(TextPrimary, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
-    drawLine(TextPrimary, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(11f * d, 4f * d), Offset(5f * d, 10f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
-private fun DrawScope.drawChevronRight(d: Float) {
+private fun DrawScope.drawChevronRight(d: Float, color: Color) {
     val w = 1.6f * d
-    drawLine(TextSecondary, Offset(5f * d, 3f * d), Offset(10f * d, 8f * d), w, StrokeCap.Round)
-    drawLine(TextSecondary, Offset(10f * d, 8f * d), Offset(5f * d, 13f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5f * d, 3f * d), Offset(10f * d, 8f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(10f * d, 8f * d), Offset(5f * d, 13f * d), w, StrokeCap.Round)
 }
 
-private fun DrawScope.drawReset(d: Float) {
-    val c = TextSecondary
+private fun DrawScope.drawReset(d: Float, color: Color) {
     drawArc(
-        color = c, startAngle = 30f, sweepAngle = 300f, useCenter = false,
+        color = color, startAngle = 30f, sweepAngle = 300f, useCenter = false,
         topLeft = Offset(2f * d, 2f * d), size = Size(14f * d, 14f * d),
         style = lineStroke(d)
     )
-    drawLine(c, Offset(13f * d, 2f * d), Offset(15f * d, 6f * d), 1.5f * d, StrokeCap.Round)
-    drawLine(c, Offset(15f * d, 6f * d), Offset(11f * d, 7f * d), 1.5f * d, StrokeCap.Round)
+    drawLine(color, Offset(13f * d, 2f * d), Offset(15f * d, 6f * d), 1.5f * d, StrokeCap.Round)
+    drawLine(color, Offset(15f * d, 6f * d), Offset(11f * d, 7f * d), 1.5f * d, StrokeCap.Round)
 }
 
-private fun DrawScope.drawStepPrev(d: Float) {
-    val c = TextSecondary
-    drawLine(c, Offset(4f * d, 4f * d), Offset(4f * d, 14f * d), 1.8f * d, StrokeCap.Round)
+private fun DrawScope.drawStepPrev(d: Float, color: Color) {
+    drawLine(color, Offset(4f * d, 4f * d), Offset(4f * d, 14f * d), 1.8f * d, StrokeCap.Round)
     val path = Path().apply {
         moveTo(14f * d, 4f * d)
         lineTo(7f * d, 9f * d)
         lineTo(14f * d, 14f * d)
         close()
     }
-    drawPath(path, c, style = lineStroke(d))
+    drawPath(path, color, style = lineStroke(d))
 }
 
-private fun DrawScope.drawStepNext(d: Float) {
-    val c = TextSecondary
-    drawLine(c, Offset(14f * d, 4f * d), Offset(14f * d, 14f * d), 1.8f * d, StrokeCap.Round)
+private fun DrawScope.drawStepNext(d: Float, color: Color) {
+    drawLine(color, Offset(14f * d, 4f * d), Offset(14f * d, 14f * d), 1.8f * d, StrokeCap.Round)
     val path = Path().apply {
         moveTo(4f * d, 4f * d)
         lineTo(11f * d, 9f * d)
         lineTo(4f * d, 14f * d)
         close()
     }
-    drawPath(path, c, style = lineStroke(d))
+    drawPath(path, color, style = lineStroke(d))
 }
 
 private fun DrawScope.drawPlay(d: Float) {

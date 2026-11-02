@@ -47,6 +47,7 @@ class ProfileViewModel(application: Application) : AndroidViewModel(application)
                     if (data.user.id.toString() == currentUserId) {
                         Log.d(TAG, "Profile verified for active user: ${data.user.name} (UID: ${data.user.id})")
                         _uiState.value = ProfileUiState.Success(data)
+                        com.example.myapplication.reminder.ReminderScheduler.checkAndNotifyAchievements(getApplication(), data)
                     } else {
                         Log.w(TAG, "Profile UID ${data.user.id} does not match active session UID $currentUserId. Refreshing.")
                         val cached = tokenManager.getUser()
