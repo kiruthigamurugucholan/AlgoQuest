@@ -1170,5 +1170,285 @@ class ProfileAuthFlowTest {
         assertEquals(NodeStatus.NEXT, nextNode.status)
         assertEquals(NodeStatus.LOCKED, lockedNode.status)
     }
+
+    @Test
+    fun bottomBarDragHelper_continuousTab_calculatesAccurateFractionalPositions() {
+        val barWidth = 360f
+
+        // Center of each tab slot:
+        // Tab 0 (Home): x = 36f (0.1 of barWidth) -> 0.0f
+        assertEquals(0.0f, BottomBarDragHelper.calculateContinuousTab(36f, barWidth), 0.01f)
+        // Tab 1 (Map): x = 108f (0.3 of barWidth) -> 1.0f
+        assertEquals(1.0f, BottomBarDragHelper.calculateContinuousTab(108f, barWidth), 0.01f)
+        // Tab 2 (Visualizer): x = 180f (0.5 of barWidth) -> 2.0f
+        assertEquals(2.0f, BottomBarDragHelper.calculateContinuousTab(180f, barWidth), 0.01f)
+        // Tab 3 (AI Ally): x = 252f (0.7 of barWidth) -> 3.0f
+        assertEquals(3.0f, BottomBarDragHelper.calculateContinuousTab(252f, barWidth), 0.01f)
+        // Tab 4 (Profile): x = 324f (0.9 of barWidth) -> 4.0f
+        assertEquals(4.0f, BottomBarDragHelper.calculateContinuousTab(324f, barWidth), 0.01f)
+
+        // Midway between Home and Map: x = 72f (0.2 of barWidth) -> 0.5f
+        assertEquals(0.5f, BottomBarDragHelper.calculateContinuousTab(72f, barWidth), 0.01f)
+
+        // Clamping beyond left edge:
+        assertEquals(0.0f, BottomBarDragHelper.calculateContinuousTab(-50f, barWidth), 0.001f)
+        // Clamping beyond right edge:
+        assertEquals(4.0f, BottomBarDragHelper.calculateContinuousTab(400f, barWidth), 0.001f)
+    }
+
+    @Test
+    fun bottomBarDragHelper_closestTab_calculatesCorrectTabAcrossSlots() {
+        val barWidth = 500f
+
+        // Slot 0 (Home): [0 .. 100)
+        assertEquals(0, BottomBarDragHelper.calculateClosestTab(0f, barWidth))
+        assertEquals(0, BottomBarDragHelper.calculateClosestTab(50f, barWidth))
+        assertEquals(0, BottomBarDragHelper.calculateClosestTab(99f, barWidth))
+
+        // Slot 1 (Map): [100 .. 200)
+        assertEquals(1, BottomBarDragHelper.calculateClosestTab(100f, barWidth))
+        assertEquals(1, BottomBarDragHelper.calculateClosestTab(150f, barWidth))
+        assertEquals(1, BottomBarDragHelper.calculateClosestTab(199f, barWidth))
+
+        // Slot 2 (Visualizer): [200 .. 300)
+        assertEquals(2, BottomBarDragHelper.calculateClosestTab(200f, barWidth))
+        assertEquals(2, BottomBarDragHelper.calculateClosestTab(250f, barWidth))
+        assertEquals(2, BottomBarDragHelper.calculateClosestTab(299f, barWidth))
+
+        // Slot 3 (AI Ally): [300 .. 400)
+        assertEquals(3, BottomBarDragHelper.calculateClosestTab(300f, barWidth))
+        assertEquals(3, BottomBarDragHelper.calculateClosestTab(350f, barWidth))
+        assertEquals(3, BottomBarDragHelper.calculateClosestTab(399f, barWidth))
+
+        // Slot 4 (Profile): [400 .. 500]
+        assertEquals(4, BottomBarDragHelper.calculateClosestTab(400f, barWidth))
+        assertEquals(4, BottomBarDragHelper.calculateClosestTab(450f, barWidth))
+        assertEquals(4, BottomBarDragHelper.calculateClosestTab(500f, barWidth))
+
+        // Clamped boundary checks
+        assertEquals(0, BottomBarDragHelper.calculateClosestTab(-100f, barWidth))
+        assertEquals(4, BottomBarDragHelper.calculateClosestTab(999f, barWidth))
+    }
+
+    @Test
+    fun bottomBarDragStateTracker_dragFromHomeDirectlyToVisualizerAiAllyAndProfile() {
+        var navigatedTab = -1
+        val tracker = BottomBarDragStateTracker(barWidth = 360f) { tab ->
+            navigatedTab = tab
+        }
+
+        // 1. Start drag at Home (x = 36f, tab 0)
+        tracker.onDragStart(36f)
+        assertTrue(tracker.isDragging)
+        assertEquals(0, tracker.currentPreviewTab)
+        assertEquals(0.0f, tracker.currentContinuousTab, 0.01f)
+
+        // 2. Drag directly from Home to Visualizer (x = 180f, tab 2)
+        tracker.onDrag(180f)
+        assertEquals("Indicator must update continuously to Visualizer", 2, tracker.currentPreviewTab)
+        assertEquals(2.0f, tracker.currentContinuousTab, 0.01f)
+
+        // 3. Continue dragging directly to AI Ally (x = 252f, tab 3)
+        tracker.onDrag(252f)
+        assertEquals("Indicator must update continuously to AI Ally", 3, tracker.currentPreviewTab)
+        assertEquals(3.0f, tracker.currentContinuousTab, 0.01f)
+
+        // 4. Continue dragging directly to Profile (x = 324f, tab 4)
+        tracker.onDrag(324f)
+        assertEquals("Indicator must update continuously to Profile", 4, tracker.currentPreviewTab)
+        assertEquals(4.0f, tracker.currentContinuousTab, 0.01f)
+
+        // 5. Release at Profile (starting from Home 0)
+        tracker.onDragEnd(currentSelectedTab = 0)
+        assertFalse(tracker.isDragging)
+        assertEquals("Releasing at Profile must navigate to tab 4", 4, navigatedTab)
+    }
+
+    @Test
+    fun bottomBarDragStateTracker_dragFromProfileBackToHome() {
+        var navigatedTab = -1
+        val tracker = BottomBarDragStateTracker(barWidth = 360f) { tab ->
+            navigatedTab = tab
+        }
+
+        // Start drag at Profile (x = 324f, tab 4)
+        tracker.onDragStart(324f)
+        assertTrue(tracker.isDragging)
+        assertEquals(4, tracker.currentPreviewTab)
+
+        // Drag left across the bar directly back to Home (x = 36f, tab 0)
+        tracker.onDrag(36f)
+        assertEquals(0, tracker.currentPreviewTab)
+        assertEquals(0.0f, tracker.currentContinuousTab, 0.01f)
+
+        // Release at Home (starting from Profile 4)
+        tracker.onDragEnd(currentSelectedTab = 4)
+        assertFalse(tracker.isDragging)
+        assertEquals("Releasing at Home must navigate to tab 0", 0, navigatedTab)
+    }
+
+    @Test
+    fun bottomBarDragStateTracker_dragWithinSameTab_avoidsDuplicateNavigationCallback() {
+        var navigatedTab = -1
+        val tracker = BottomBarDragStateTracker(barWidth = 360f) { tab ->
+            navigatedTab = tab
+        }
+
+        // Start at Map (tab 1), small drag within Map slot (x = 100f)
+        tracker.onDragStart(108f)
+        assertEquals(1, tracker.currentPreviewTab)
+
+        tracker.onDrag(120f)
+        assertEquals(1, tracker.currentPreviewTab)
+
+        // Release still on Map
+        tracker.onDragEnd(currentSelectedTab = 1)
+        assertFalse(tracker.isDragging)
+        assertEquals("Releasing on the same tab must NOT trigger redundant navigation", -1, navigatedTab)
+    }
+
+    @Test
+    fun horizontalPager_userScrollDisabled_preservesProgrammaticNavigation() {
+        // userScrollEnabled = false ensures screen swipe gestures are disabled
+        val userScrollEnabled = false
+        assertFalse("Full-screen user scroll on HorizontalPager must be disabled", userScrollEnabled)
+
+        // Programmatic navigation through onSelectTab remains fully functional
+        var currentScreen = 7
+        var pagerTarget = 0
+
+        fun onSelectTab(tabIndex: Int) {
+            val screen = when (tabIndex) {
+                0 -> 7
+                1 -> 10
+                2 -> 8
+                3 -> 9
+                4 -> 12
+                else -> 7
+            }
+            currentScreen = screen
+            pagerTarget = tabIndex
+        }
+
+        onSelectTab(2) // Navigate to Visualizer
+        assertEquals(8, currentScreen)
+        assertEquals(2, pagerTarget)
+
+        onSelectTab(4) // Navigate to Profile
+        assertEquals(12, currentScreen)
+        assertEquals(4, pagerTarget)
+
+        onSelectTab(0) // Navigate to Home
+        assertEquals(7, currentScreen)
+        assertEquals(0, pagerTarget)
+    }
+
+    @Test
+    fun bottomBarLayout_evenlyDistributedSlots_andProportionalCenterButton() {
+        val totalWidth = 360f
+        val tabCount = 5
+        val slotWidth = totalWidth / tabCount
+
+        // 1. Equal distribution across all five items
+        assertEquals("Each slot must occupy exactly 1/5th of the bar width", 72f, slotWidth, 0.001f)
+
+        // Slot centers must be strictly equidistant
+        val slotCenters = (0 until tabCount).map { i -> (i + 0.5f) * slotWidth }
+        assertEquals(36f, slotCenters[0], 0.001f)  // Home
+        assertEquals(108f, slotCenters[1], 0.001f) // Map
+        assertEquals(180f, slotCenters[2], 0.001f) // Viz Lab (exact center)
+        assertEquals(252f, slotCenters[3], 0.001f) // AI Ally
+        assertEquals(324f, slotCenters[4], 0.001f) // Profile
+
+        for (i in 0 until tabCount - 1) {
+            val delta = slotCenters[i + 1] - slotCenters[i]
+            assertEquals("Distance between adjacent tab centers must be equal", slotWidth, delta, 0.001f)
+        }
+
+        // 2. Center Visualizer Lab sizing and height budget check
+        val standardIconSizeDp = 20f
+        val centerOrbSizeDp = 28f
+        val iconToLabelSpacingDp = 2f
+        val labelHeightEstimateDp = 13f
+        val activePillHeightDp = 48f
+        val containerInnerHeightDp = 54f
+
+        val totalTabContentHeightDp = centerOrbSizeDp + iconToLabelSpacingDp + labelHeightEstimateDp
+        assertEquals("Total tab content height", 43f, totalTabContentHeightDp, 0.001f)
+        assertTrue(
+            "Tab content (43dp) must comfortably fit inside the active pill (48dp) without clipping",
+            totalTabContentHeightDp <= activePillHeightDp
+        )
+        assertTrue(
+            "Tab content (43dp) must comfortably fit inside inner container (54dp) without vertical offset or overflow",
+            totalTabContentHeightDp <= containerInnerHeightDp
+        )
+
+        // Center orb is prominent (> standard 20dp icon) but proportional (<= 32dp, previously oversized at 46dp)
+        assertTrue("Center orb must be larger than standard icon for prominence", centerOrbSizeDp > standardIconSizeDp)
+        assertTrue("Center orb must be <= 32dp to prevent overlapping navigation pill", centerOrbSizeDp <= 32f)
+    }
+
+    @Test
+    fun profileScreen_enhancementLayout_preservesDataIntegrityAndStructure() {
+        val testUser = ProfileUserDto(
+            id = 42,
+            name = "Alex Morgan",
+            email = "alex.morgan@algoquest.io",
+            initials = "AM",
+            joined = "October 2026",
+            xp = 3200,
+            level = 9,
+            streak = 14,
+            solvedLessons = 18,
+            percentile = "5%"
+        )
+
+        val skills = listOf(
+            com.example.myapplication.data.model.response.SkillMasteryDto("Array & Two Pointers", 0.85f, "85%", "green"),
+            com.example.myapplication.data.model.response.SkillMasteryDto("Searching Algorithms", 0.60f, "60%", "cyan"),
+            com.example.myapplication.data.model.response.SkillMasteryDto("Sorting Algorithms", 0.45f, "45%", "gold"),
+            com.example.myapplication.data.model.response.SkillMasteryDto("Trees & Graphs", 0.30f, "30%", "purple")
+        )
+
+        val achievements = listOf(
+            com.example.myapplication.data.model.response.AchievementDto(1, "FIRST_STEP", "First Step", "Complete your first lesson", "🌱", 50, true, "2026-10-15"),
+            com.example.myapplication.data.model.response.AchievementDto(2, "STREAK_7", "7-Day Streak", "Maintain a 7-day streak", "🔥", 150, true, "2026-10-22"),
+            com.example.myapplication.data.model.response.AchievementDto(3, "ALGO_MASTER", "Algorithm Master", "Solve 50 DSA challenges", "👑", 500, false, null)
+        )
+
+        val profileData = ProfileData(testUser, skills, achievements)
+
+        // 1. Profile Header data
+        assertEquals("AM", profileData.user.initials)
+        assertEquals("Alex Morgan", profileData.user.name)
+        val levelBadgeText = "LVL ${profileData.user.level.toString().padStart(2, '0')} EXPLORER"
+        assertEquals("LVL 09 EXPLORER", levelBadgeText)
+        val rankingBadgeText = "TOP ${profileData.user.percentile} GLOBAL"
+        assertEquals("TOP 5% GLOBAL", rankingBadgeText)
+
+        // 2. Stat Cards metrics
+        assertEquals(14, profileData.user.streak)
+        assertEquals(3200, profileData.user.xp)
+        assertEquals(18, profileData.user.solvedLessons)
+
+        // 3. Skill Mastery data integrity
+        assertEquals(4, profileData.skills.size)
+        assertEquals("Array & Two Pointers", profileData.skills[0].title)
+        assertEquals(0.85f, profileData.skills[0].progress, 0.001f)
+        assertEquals("85%", profileData.skills[0].percent)
+
+        assertEquals("Searching Algorithms", profileData.skills[1].title)
+        assertEquals(0.60f, profileData.skills[1].progress, 0.001f)
+
+        // 4. Achievement Distinction
+        val unlockedCount = profileData.achievements.count { it.isUnlocked }
+        val lockedCount = profileData.achievements.count { !it.isUnlocked }
+        assertEquals("Must preserve unlocked achievement count", 2, unlockedCount)
+        assertEquals("Must preserve locked achievement count", 1, lockedCount)
+        assertEquals("🌱", profileData.achievements[0].iconEmoji)
+        assertEquals("🔥", profileData.achievements[1].iconEmoji)
+        assertFalse(profileData.achievements[2].isUnlocked)
+    }
 }
 

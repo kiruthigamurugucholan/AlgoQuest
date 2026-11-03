@@ -1,6 +1,9 @@
 package com.example.myapplication
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -9,8 +12,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -40,6 +46,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -112,6 +119,75 @@ class BottomBarSwipeTracker(
     }
 }
 
+/** Helper for continuous drag-to-select navigation calculations and boundary clamping */
+object BottomBarDragHelper {
+    const val TAB_COUNT = 5
+    const val MIN_TAB = 0
+    const val MAX_TAB = 4
+
+    /**
+     * Calculates the continuous/fractional tab position [0.0f .. 4.0f]
+     * based on touch X position and total navigation bar width.
+     */
+    fun calculateContinuousTab(x: Float, barWidth: Float): Float {
+        if (barWidth <= 0f) return 0f
+        val fraction = (x / barWidth).coerceIn(0f, 1f)
+        return (fraction * TAB_COUNT.toFloat() - 0.5f).coerceIn(
+            MIN_TAB.toFloat(),
+            MAX_TAB.toFloat()
+        )
+    }
+
+    /**
+     * Calculates the discrete closest tab index (0..4)
+     * based on touch X position and total navigation bar width.
+     */
+    fun calculateClosestTab(x: Float, barWidth: Float): Int {
+        if (barWidth <= 0f) return 0
+        val fraction = (x / barWidth).coerceIn(0f, 1f)
+        val tab = (fraction * TAB_COUNT.toFloat()).toInt().coerceIn(MIN_TAB, MAX_TAB)
+        return tab
+    }
+}
+
+/** Pure drag gesture tracker for unit testability and continuous navigation state */
+class BottomBarDragStateTracker(
+    var barWidth: Float = 360f,
+    val onNavigate: (Int) -> Unit
+) {
+    var isDragging: Boolean = false
+        private set
+    var currentContinuousTab: Float = 0f
+        private set
+    var currentPreviewTab: Int = 0
+        private set
+
+    fun onDragStart(startX: Float) {
+        isDragging = true
+        currentContinuousTab = BottomBarDragHelper.calculateContinuousTab(startX, barWidth)
+        currentPreviewTab = BottomBarDragHelper.calculateClosestTab(startX, barWidth)
+    }
+
+    fun onDrag(currentX: Float) {
+        if (!isDragging) return
+        currentContinuousTab = BottomBarDragHelper.calculateContinuousTab(currentX, barWidth)
+        currentPreviewTab = BottomBarDragHelper.calculateClosestTab(currentX, barWidth)
+    }
+
+    fun onDragEnd(currentSelectedTab: Int) {
+        if (!isDragging) return
+        isDragging = false
+        val targetTab = currentPreviewTab
+        if (targetTab != currentSelectedTab) {
+            onNavigate(targetTab)
+        }
+    }
+
+    fun onDragCancel() {
+        isDragging = false
+    }
+}
+
 private val NavContainerBg = Color(0xFF1B1F38)
 private val ActivePillBg = Color(0xFF2B2550)
 private val TextMuted = Color(0xFF8C98B8)
@@ -127,14 +203,35 @@ fun AlgoQuestBottomBar(
     onSelectTab: (Int) -> Unit
 ) {
     val containerShape = RoundedCornerShape(32.dp)
-    val density = LocalDensity.current
-    val swipeThresholdPx = with(density) { BottomBarSwipeHelper.DEFAULT_SWIPE_THRESHOLD_DP.dp.toPx() }
 
-    val currentTab by rememberUpdatedState(selectedTab)
+    val currentSelectedTab by rememberUpdatedState(selectedTab)
     val currentOnSelectTab by rememberUpdatedState(onSelectTab)
 
-    var dragAccumulator by remember { mutableStateOf(0f) }
-    var hasSwipedInGesture by remember { mutableStateOf(false) }
+    var isDragging by remember { mutableStateOf(false) }
+    var dragX by remember { mutableStateOf(0f) }
+    var barWidthPx by remember { mutableStateOf(0) }
+
+    val currentContinuousTab = remember(isDragging, dragX, barWidthPx, selectedTab) {
+        if (isDragging && barWidthPx > 0) {
+            BottomBarDragHelper.calculateContinuousTab(dragX, barWidthPx.toFloat())
+        } else {
+            selectedTab.toFloat()
+        }
+    }
+
+    val currentPreviewTab = remember(isDragging, dragX, barWidthPx, selectedTab) {
+        if (isDragging && barWidthPx > 0) {
+            BottomBarDragHelper.calculateClosestTab(dragX, barWidthPx.toFloat())
+        } else {
+            selectedTab
+        }
+    }
+
+    val animatedTabPosition by animateFloatAsState(
+        targetValue = currentContinuousTab,
+        animationSpec = if (isDragging) snap() else tween(durationMillis = 280, easing = FastOutSlowInEasing),
+        label = "tabPosition"
+    )
 
     Box(
         modifier = Modifier
@@ -144,45 +241,33 @@ fun AlgoQuestBottomBar(
         contentAlignment = Alignment.BottomCenter
     ) {
         // Main Floating Glass Shell
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(66.dp)
+                .onSizeChanged { barWidthPx = it.width }
                 .pointerInput(Unit) {
                     detectHorizontalDragGestures(
-                        onDragStart = {
-                            dragAccumulator = 0f
-                            hasSwipedInGesture = false
+                        onDragStart = { offset ->
+                            isDragging = true
+                            dragX = offset.x
                         },
                         onDragEnd = {
-                            dragAccumulator = 0f
-                            hasSwipedInGesture = false
+                            val finalTab = if (barWidthPx > 0) {
+                                BottomBarDragHelper.calculateClosestTab(dragX, barWidthPx.toFloat())
+                            } else currentSelectedTab
+
+                            isDragging = false
+                            if (finalTab != currentSelectedTab) {
+                                currentOnSelectTab(finalTab)
+                            }
                         },
                         onDragCancel = {
-                            dragAccumulator = 0f
-                            hasSwipedInGesture = false
+                            isDragging = false
                         },
                         onHorizontalDrag = { change, dragAmount ->
-                            if (!hasSwipedInGesture) {
-                                dragAccumulator += dragAmount
-                                if (dragAccumulator <= -swipeThresholdPx) {
-                                    hasSwipedInGesture = true
-                                    val nextTab = BottomBarSwipeHelper.getNextTabOnSwipeLeft(currentTab)
-                                    if (nextTab != currentTab) {
-                                        currentOnSelectTab(nextTab)
-                                    }
-                                    change.consume()
-                                } else if (dragAccumulator >= swipeThresholdPx) {
-                                    hasSwipedInGesture = true
-                                    val prevTab = BottomBarSwipeHelper.getNextTabOnSwipeRight(currentTab)
-                                    if (prevTab != currentTab) {
-                                        currentOnSelectTab(prevTab)
-                                    }
-                                    change.consume()
-                                }
-                            } else {
-                                change.consume()
-                            }
+                            dragX = (dragX + dragAmount).coerceIn(0f, barWidthPx.toFloat())
+                            change.consume()
                         }
                     )
                 }
@@ -206,42 +291,74 @@ fun AlgoQuestBottomBar(
                     shape = containerShape
                 )
                 .padding(horizontal = 6.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.CenterStart
         ) {
-            // Tab 0: Home
-            NavTabItem(
-                label = "Home",
-                selected = selectedTab == 0,
-                onClick = { onSelectTab(0) }
-            ) { d, active -> drawHomeIcon(d, if (active) Cyan else TextMuted) }
+            val totalWidth = maxWidth
+            val tabWidth = totalWidth / 5
+            val pillWidth = (tabWidth - 6.dp).coerceIn(36.dp, tabWidth)
+            val pillHeight = 48.dp
+            val pillShape = RoundedCornerShape(22.dp)
 
-            // Tab 1: Map
-            NavTabItem(
-                label = "Map",
-                selected = selectedTab == 1,
-                onClick = { onSelectTab(1) }
-            ) { d, active -> drawMapIcon(d, if (active) Cyan else TextMuted) }
+            // Dynamic sliding indicator pill that follows the finger continuously
+            val pillOffsetX = (tabWidth * animatedTabPosition) + (tabWidth - pillWidth) / 2
 
-            // Tab 2: Visualizer Lab (Featured Elevated Hub)
-            CenterOrbTabItem(
-                selected = selectedTab == 2,
-                onClick = { onSelectTab(2) }
+            Box(
+                modifier = Modifier
+                    .offset(x = pillOffsetX)
+                    .size(width = pillWidth, height = pillHeight)
+                    .clip(pillShape)
+                    .background(ActivePillBg)
+                    .border(
+                        width = 1.dp,
+                        color = PurpleSoft.copy(alpha = 0.45f),
+                        shape = pillShape
+                    )
             )
 
-            // Tab 3: AI Ally
-            NavTabItem(
-                label = "AI Ally",
-                selected = selectedTab == 3,
-                onClick = { onSelectTab(3) }
-            ) { d, active -> drawSparkles(d, if (active) Cyan else TextMuted) }
+            // Five interactive tabs evenly distributed across available width
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Tab 0: Home
+                NavTabItem(
+                    label = "Home",
+                    selected = currentPreviewTab == 0,
+                    onClick = { onSelectTab(0) },
+                    modifier = Modifier.weight(1f)
+                ) { d, active -> drawHomeIcon(d, if (active) Cyan else TextMuted) }
 
-            // Tab 4: Profile
-            NavTabItem(
-                label = "Profile",
-                selected = selectedTab == 4,
-                onClick = { onSelectTab(4) }
-            ) { d, active -> drawUserIcon(d, if (active) Cyan else TextMuted) }
+                // Tab 1: Map
+                NavTabItem(
+                    label = "Map",
+                    selected = currentPreviewTab == 1,
+                    onClick = { onSelectTab(1) },
+                    modifier = Modifier.weight(1f)
+                ) { d, active -> drawMapIcon(d, if (active) Cyan else TextMuted) }
+
+                // Tab 2: Visualizer Lab (Featured Central Hub)
+                CenterOrbTabItem(
+                    selected = currentPreviewTab == 2,
+                    onClick = { onSelectTab(2) },
+                    modifier = Modifier.weight(1f)
+                )
+
+                // Tab 3: AI Ally
+                NavTabItem(
+                    label = "AI Ally",
+                    selected = currentPreviewTab == 3,
+                    onClick = { onSelectTab(3) },
+                    modifier = Modifier.weight(1f)
+                ) { d, active -> drawSparkles(d, if (active) Cyan else TextMuted) }
+
+                // Tab 4: Profile
+                NavTabItem(
+                    label = "Profile",
+                    selected = currentPreviewTab == 4,
+                    onClick = { onSelectTab(4) },
+                    modifier = Modifier.weight(1f)
+                ) { d, active -> drawUserIcon(d, if (active) Cyan else TextMuted) }
+            }
         }
     }
 }
@@ -251,36 +368,29 @@ private fun NavTabItem(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
     icon: DrawScope.(Float, Boolean) -> Unit
 ) {
-    val pillBg by animateColorAsState(
-        targetValue = if (selected) ActivePillBg else Color.Transparent,
-        animationSpec = tween(250),
-        label = "pillBg"
-    )
-
     val pillShape = RoundedCornerShape(22.dp)
 
     Box(
-        modifier = Modifier
-            .height(48.dp)
+        modifier = modifier
+            .fillMaxHeight()
             .clip(pillShape)
-            .background(pillBg)
-            .border(
-                width = if (selected) 1.dp else 0.dp,
-                color = if (selected) PurpleSoft.copy(alpha = 0.4f) else Color.Transparent,
-                shape = pillShape
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Canvas(Modifier.size(20.dp)) {
-                icon(this, density, selected)
+            Box(
+                modifier = Modifier.size(28.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(Modifier.size(20.dp)) {
+                    icon(this, density, selected)
+                }
             }
             Text(
                 text = label,
@@ -289,7 +399,8 @@ private fun NavTabItem(
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                     fontSize = 9.5.sp,
                     color = if (selected) PurpleSoft else TextMuted
-                )
+                ),
+                maxLines = 1
             )
         }
     }
@@ -299,7 +410,8 @@ private fun NavTabItem(
 @Composable
 private fun CenterOrbTabItem(
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val orbShape = CircleShape
     val glowColor by animateColorAsState(
@@ -308,38 +420,54 @@ private fun CenterOrbTabItem(
         label = "glowColor"
     )
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-        modifier = Modifier.offset(y = (-6).dp)
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .clip(RoundedCornerShape(22.dp))
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(46.dp)
-                .shadow(elevation = 12.dp, shape = orbShape, ambientColor = glowColor, spotColor = glowColor)
-                .clip(orbShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = if (selected) listOf(Cyan, Purple) else listOf(Purple, NavContainerBg)
-                    )
-                )
-                .border(2.dp, Brush.sweepGradient(listOf(Cyan, Gold, Purple, Cyan)), orbShape)
-                .clickable(onClick = onClick),
-            contentAlignment = Alignment.Center
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
-            Canvas(Modifier.size(20.dp)) {
-                drawLab(density, Color.White)
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .shadow(
+                        elevation = if (selected) 6.dp else 2.dp,
+                        shape = orbShape,
+                        ambientColor = glowColor,
+                        spotColor = glowColor
+                    )
+                    .clip(orbShape)
+                    .background(
+                        Brush.radialGradient(
+                            colors = if (selected) listOf(Cyan, Purple) else listOf(Purple, NavContainerBg)
+                        )
+                    )
+                    .border(
+                        1.5.dp,
+                        Brush.sweepGradient(listOf(Cyan, Gold, Purple, Cyan)),
+                        orbShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(Modifier.size(16.dp)) {
+                    drawLab(density, Color.White)
+                }
             }
-        }
-        Text(
-            text = "Viz Lab",
-            style = TextStyle(
-                fontFamily = Inter,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                fontSize = 9.sp,
-                color = if (selected) Cyan else PurpleSoft
+            Text(
+                text = "Viz Lab",
+                style = TextStyle(
+                    fontFamily = Inter,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    fontSize = 9.5.sp,
+                    color = if (selected) Cyan else PurpleSoft
+                ),
+                maxLines = 1
             )
-        )
+        }
     }
 }
 
@@ -380,7 +508,7 @@ private fun DrawScope.drawLab(d: Float, color: Color) {
 }
 
 private fun DrawScope.drawUserIcon(d: Float, color: Color) {
-    drawCircle(color, radius = 3f * d, center = Offset(9f * d, 5f * d), style = lineStroke(d, 1.4f))
+    drawCircle(color, radius = 3f * d, center = Offset(9f * d, 5f * d), style = lineStroke(d))
     drawArc(color, 180f, 180f, false, Offset(3f * d, 9f * d), Size(12f * d, 10f * d), style = lineStroke(d, 1.4f))
 }
 

@@ -369,6 +369,7 @@ class MainActivity : ComponentActivity() {
                                 HorizontalPager(
                                     state = pagerState,
                                     beyondViewportPageCount = 4,
+                                    userScrollEnabled = false,
                                     modifier = Modifier
                                         .weight(1f)
                                         .fillMaxWidth()
