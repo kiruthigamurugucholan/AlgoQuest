@@ -302,6 +302,7 @@ fun AlgoQuestBottomBar(
             // Dynamic sliding indicator pill that follows the finger continuously
             val pillOffsetX = (tabWidth * animatedTabPosition) + (tabWidth - pillWidth) / 2
 
+
             Box(
                 modifier = Modifier
                     .offset(x = pillOffsetX)
