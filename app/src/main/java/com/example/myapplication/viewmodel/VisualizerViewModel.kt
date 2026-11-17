@@ -180,6 +180,16 @@ class VisualizerViewModel(application: Application) : AndroidViewModel(applicati
         runAndVisualizeCode()
     }
 
+    fun selectAlgorithmBySlug(slug: String): Boolean {
+        val targetSlug = slug.trim().lowercase()
+        val index = algMetadata.indexOfFirst { it.slug.lowercase() == targetSlug }
+        if (index != -1) {
+            selectAlgorithm(index)
+            return true
+        }
+        return false
+    }
+
     fun setLanguage(language: CodeLanguage) {
         if (_currentLanguage.value == language) return
         _currentLanguage.value = language

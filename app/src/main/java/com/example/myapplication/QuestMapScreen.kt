@@ -64,6 +64,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.data.model.catalogue.DsaCategory
+import com.example.myapplication.data.model.catalogue.DsaSubtopic
+import com.example.myapplication.data.model.catalogue.TopicDifficulty
+import com.example.myapplication.data.repository.DsaTopicCatalogueRepository
 import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.viewmodel.LearningViewModel
 import com.example.myapplication.viewmodel.TopicsUiState
@@ -85,6 +89,7 @@ private val Poppins: FontFamily = FontFamily.SansSerif
 private val Inter: FontFamily = FontFamily.SansSerif
 private val Mono: FontFamily = FontFamily.Monospace
 
+enum class QuestMapMode { ROADMAP, CATALOGUE }
 enum class NodeStatus { COMPLETED, ACTIVE, NEXT, LOCKED }
 
 data class QuestNode(
@@ -108,6 +113,7 @@ fun QuestMapScreen(
     learningViewModel: LearningViewModel? = null,
     onBack: () -> Unit = {},
     onSelectChapter: (chapterId: Int) -> Unit = {},
+    onSelectSubtopic: (subtopicId: String) -> Unit = {},
     onSelectTab: (Int) -> Unit = {},
     showBottomBar: Boolean = true
 ) {
@@ -185,6 +191,17 @@ fun QuestMapScreen(
     // Inline banner notice when tapping a locked chapter
     var lockedMessage by remember { mutableStateOf<String?>(null) }
 
+    var selectedMode by remember { mutableStateOf(QuestMapMode.ROADMAP) }
+    var selectedDifficulty by remember { mutableStateOf<TopicDifficulty?>(null) }
+    var expandedCategoryIds by remember { mutableStateOf(setOf("programming_basics", "arrays")) }
+
+    val allCategories = remember { DsaTopicCatalogueRepository.getAllCategories() }
+    val subtopicsByCategory = remember {
+        allCategories.associateWith { cat ->
+            DsaTopicCatalogueRepository.getSubtopicsForCategory(cat.id)
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -206,6 +223,7 @@ fun QuestMapScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
+                    modifier = Modifier.weight(1f, fill = false),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -235,18 +253,90 @@ fun QuestMapScreen(
                             )
                         )
                         Text(
-                            text = "Adventure Roadmap · 7 Chapters",
+                            text = if (selectedMode == QuestMapMode.ROADMAP) "Adventure Roadmap · 7 Chapters" else "Complete DSA Catalogue · 65 Topics",
                             style = TextStyle(
                                 fontFamily = Inter,
                                 fontSize = 11.5.sp,
                                 color = textSecondary
-                            )
+                            ),
+                            maxLines = 1
                         )
                     }
                 }
+                Spacer(Modifier.width(8.dp))
                 // Preserved Live Syllabus Badge
-                Badge("LIVE SYLLABUS", gold.copy(alpha = 0.12f), gold)
+                Badge(if (selectedMode == QuestMapMode.ROADMAP) "LIVE ROADMAP" else "65 TOPICS", gold.copy(alpha = 0.12f), gold)
             }
+
+            // Top Mode Toggle: Adventure Roadmap vs DSA Catalogue
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CardBg)
+                    .border(
+                        1.dp,
+                        if (isDark) Color.White.copy(alpha = 0.08f) else borderColor,
+                        RoundedCornerShape(12.dp)
+                    )
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val isRoadmapSelected = selectedMode == QuestMapMode.ROADMAP
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (isRoadmapSelected) ActiveCardBg else Color.Transparent)
+                        .border(
+                            1.dp,
+                            if (isRoadmapSelected) cyan.copy(alpha = 0.5f) else Color.Transparent,
+                            RoundedCornerShape(9.dp)
+                        )
+                        .clickable { selectedMode = QuestMapMode.ROADMAP },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Adventure Roadmap",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = if (isRoadmapSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 12.sp,
+                            color = if (isRoadmapSelected) textPrimary else textSecondary
+                        )
+                    )
+                }
+
+                val isCatalogueSelected = selectedMode == QuestMapMode.CATALOGUE
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(9.dp))
+                        .background(if (isCatalogueSelected) ActiveCardBg else Color.Transparent)
+                        .border(
+                            1.dp,
+                            if (isCatalogueSelected) purple.copy(alpha = 0.6f) else Color.Transparent,
+                            RoundedCornerShape(9.dp)
+                        )
+                        .clickable { selectedMode = QuestMapMode.CATALOGUE },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "DSA Catalogue (65)",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = if (isCatalogueSelected) FontWeight.Bold else FontWeight.Medium,
+                            fontSize = 12.sp,
+                            color = if (isCatalogueSelected) textPrimary else textSecondary
+                        )
+                    )
+                }
+            }
+
+            if (selectedMode == QuestMapMode.ROADMAP) {
 
             // 1. Current Quest Card (Hero Banner)
             if (activeNode != null) {
@@ -490,6 +580,316 @@ fun QuestMapScreen(
                             }
                         }
                     )
+                }
+            }
+            } else {
+                // Mode 2: Complete DSA Catalogue
+                val bannerShape = RoundedCornerShape(18.dp)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(bannerShape)
+                        .background(ActiveCardBg)
+                        .border(
+                            width = 1.dp,
+                            brush = if (isDark) {
+                                Brush.horizontalGradient(listOf(purple.copy(alpha = 0.6f), cyan.copy(alpha = 0.6f)))
+                            } else {
+                                Brush.linearGradient(listOf(borderColor, borderColor))
+                            },
+                            shape = bannerShape
+                        )
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Badge("DSA SYLLABUS", purple.copy(alpha = 0.18f), purpleSoft)
+                        Badge("12 CATEGORIES · 65 TOPICS", cyan.copy(alpha = 0.18f), cyan)
+                    }
+
+                    Text(
+                        text = "Complete DSA Catalogue",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = textPrimary
+                        )
+                    )
+
+                    Text(
+                        text = "Master 65 essential subtopics across all 12 core computer science categories with interactive visualizers and mastery quizzes.",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp,
+                            color = textSecondary
+                        )
+                    )
+
+                    // Difficulty Summary Pills
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(green.copy(alpha = 0.12f))
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "32 Easy",
+                                style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = green)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(gold.copy(alpha = 0.12f))
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "22 Medium",
+                                style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = gold)
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(purple.copy(alpha = 0.15f))
+                                .padding(vertical = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "11 Hard",
+                                style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = purpleSoft)
+                            )
+                        }
+                    }
+                }
+
+                // Difficulty Filter Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val filters = listOf(
+                        Triple("All (65)", null, textPrimary),
+                        Triple("Easy (32)", TopicDifficulty.EASY, green),
+                        Triple("Medium (22)", TopicDifficulty.MEDIUM, gold),
+                        Triple("Hard (11)", TopicDifficulty.HARD, purpleSoft)
+                    )
+
+                    filters.forEach { (label, diff, activeColor) ->
+                        val isSelected = selectedDifficulty == diff
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (isSelected) activeColor.copy(alpha = 0.18f) else CardBg)
+                                .border(
+                                    1.dp,
+                                    if (isSelected) activeColor else if (isDark) Color.White.copy(alpha = 0.08f) else borderColor,
+                                    RoundedCornerShape(10.dp)
+                                )
+                                .clickable { selectedDifficulty = diff },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = label,
+                                style = TextStyle(
+                                    fontFamily = Inter,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 11.sp,
+                                    color = if (isSelected) activeColor else textSecondary
+                                )
+                            )
+                        }
+                    }
+                }
+
+                // Section Header for Categories
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (selectedDifficulty == null) "All Categories (12)" else "${selectedDifficulty?.displayName} Topics",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 16.sp,
+                            color = textPrimary
+                        )
+                    )
+                    val matchingCount = remember(selectedDifficulty) {
+                        if (selectedDifficulty == null) 65
+                        else DsaTopicCatalogueRepository.filterSubtopics(selectedDifficulty).size
+                    }
+                    Text(
+                        text = "$matchingCount Topics",
+                        style = TextStyle(
+                            fontFamily = Mono,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp,
+                            color = cyan
+                        )
+                    )
+                }
+
+                // List of 12 Categories with Expand/Collapse Subtopics
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    allCategories.forEachIndexed { catIdx, category ->
+                        val catSubtopics = subtopicsByCategory[category] ?: emptyList()
+                        val filteredSubtopics = if (selectedDifficulty == null) {
+                            catSubtopics
+                        } else {
+                            catSubtopics.filter { it.difficulty == selectedDifficulty }
+                        }
+
+                        if (filteredSubtopics.isNotEmpty()) {
+                            val isExpanded = expandedCategoryIds.contains(category.id)
+                            val catShape = RoundedCornerShape(16.dp)
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(catShape)
+                                    .background(CardBg)
+                                    .border(
+                                        1.dp,
+                                        if (isExpanded) cyan.copy(alpha = 0.35f) else (if (isDark) Color.White.copy(alpha = 0.08f) else borderColor),
+                                        catShape
+                                    )
+                            ) {
+                                // Category Header (click to toggle expand/collapse)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            expandedCategoryIds = if (isExpanded) {
+                                                expandedCategoryIds - category.id
+                                            } else {
+                                                expandedCategoryIds + category.id
+                                            }
+                                        }
+                                        .padding(14.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Number Badge
+                                    Box(
+                                        modifier = Modifier
+                                            .size(38.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(purple.copy(alpha = 0.15f))
+                                            .border(1.dp, purple.copy(alpha = 0.3f), RoundedCornerShape(10.dp)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = (catIdx + 1).toString().padStart(2, '0'),
+                                            style = TextStyle(
+                                                fontFamily = Mono,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = purpleSoft
+                                            )
+                                        )
+                                    }
+
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = category.name,
+                                                style = TextStyle(
+                                                    fontFamily = Poppins,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 15.sp,
+                                                    color = textPrimary
+                                                )
+                                            )
+                                            Badge(
+                                                "${filteredSubtopics.size} Topics",
+                                                cyan.copy(alpha = 0.12f),
+                                                cyan
+                                            )
+                                        }
+                                        Text(
+                                            text = category.description,
+                                            style = TextStyle(
+                                                fontFamily = Inter,
+                                                fontSize = 11.5.sp,
+                                                color = textSecondary
+                                            ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+
+                                    // Expand / Collapse Chevron
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(ActiveCardBg),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        IconCanvas(12.dp) { d ->
+                                            if (isExpanded) {
+                                                drawChevronUp(d, textPrimary)
+                                            } else {
+                                                drawChevronDown(d, textSecondary)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Subtopics List (when expanded)
+                                AnimatedVisibility(
+                                    visible = isExpanded,
+                                    enter = fadeIn() + expandVertically(),
+                                    exit = fadeOut() + shrinkVertically()
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 14.dp, end = 14.dp, bottom = 14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        filteredSubtopics.forEachIndexed { sIdx, subtopic ->
+                                            DsaSubtopicCard(
+                                                subtopic = subtopic,
+                                                index = sIdx + 1,
+                                                onClick = { onSelectSubtopic(subtopic.id) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -846,6 +1246,124 @@ private fun DrawScope.drawGraphIcon(d: Float, color: Color) {
     drawCircle(color, radius = 1.8f * d, center = Offset(8f * d, 12f * d), style = lineStroke(d))
     drawLine(color, Offset(4f * d, 4f * d), Offset(12f * d, 4f * d), 1.2f * d)
     drawLine(color, Offset(4f * d, 4f * d), Offset(8f * d, 12f * d), 1.2f * d)
+}
+
+private fun DrawScope.drawChevronDown(d: Float, color: Color) {
+    val w = 1.6f * d
+    drawLine(color, Offset(3f * d, 6f * d), Offset(8f * d, 11f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(8f * d, 11f * d), Offset(13f * d, 6f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawChevronUp(d: Float, color: Color) {
+    val w = 1.6f * d
+    drawLine(color, Offset(3f * d, 11f * d), Offset(8f * d, 6f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(8f * d, 6f * d), Offset(13f * d, 11f * d), w, StrokeCap.Round)
+}
+
+@Composable
+private fun DsaSubtopicCard(
+    subtopic: DsaSubtopic,
+    index: Int,
+    onClick: () -> Unit
+) {
+    val green = Green
+    val gold = Gold
+    val purple = Purple
+    val purpleSoft = PurpleSoft
+    val cyan = Cyan
+    val textPrimary = TextPrimary
+    val textMuted = TextMuted
+    val activeCardBg = ActiveCardBg
+    val borderColor = BorderColor
+    val isDark = AlgoTheme.colors.isDark
+
+    val (diffBg, diffColor) = when (subtopic.difficulty) {
+        TopicDifficulty.EASY -> Pair(green.copy(alpha = 0.15f), green)
+        TopicDifficulty.MEDIUM -> Pair(gold.copy(alpha = 0.15f), gold)
+        TopicDifficulty.HARD -> Pair(purple.copy(alpha = 0.15f), purpleSoft)
+    }
+
+    val itemShape = RoundedCornerShape(12.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(itemShape)
+            .background(activeCardBg)
+            .border(
+                1.dp,
+                if (isDark) Color.White.copy(alpha = 0.06f) else borderColor,
+                itemShape
+            )
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Badge(
+                    subtopic.difficulty.displayName.uppercase(),
+                    diffBg,
+                    diffColor
+                )
+                if (!subtopic.timeComplexity.isNullOrEmpty()) {
+                    Badge(
+                        subtopic.timeComplexity,
+                        cyan.copy(alpha = 0.12f),
+                        cyan
+                    )
+                }
+            }
+            Text(
+                text = "+${subtopic.xpReward} XP",
+                style = TextStyle(
+                    fontFamily = Mono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp,
+                    color = gold
+                )
+            )
+        }
+
+        Text(
+            text = "$index. ${subtopic.title}",
+            style = TextStyle(
+                fontFamily = Inter,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.5.sp,
+                color = textPrimary
+            )
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "${subtopic.estimatedMinutes} min read & lab",
+                style = TextStyle(
+                    fontFamily = Inter,
+                    fontSize = 11.sp,
+                    color = textMuted
+                )
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (subtopic.hasVisualizer) {
+                    Badge("👁️ VIZ", purple.copy(alpha = 0.18f), purpleSoft)
+                }
+                if (subtopic.hasQuiz) {
+                    Badge("🎯 QUIZ", cyan.copy(alpha = 0.15f), cyan)
+                }
+            }
+        }
+    }
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)

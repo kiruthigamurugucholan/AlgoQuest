@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
                     // 11 = Chapter Detail, 12 = Explorer Profile, 13 = Quiz Screen, 14 = Settings Screen
                     var screen by rememberSaveable { mutableIntStateOf(0) }
                     var currentChapterId by rememberSaveable { mutableIntStateOf(3) }
+                    var currentSubtopicId by rememberSaveable { mutableStateOf<String?>(null) }
                     var currentQuizLessonId by rememberSaveable { mutableIntStateOf(5) }
                     var aiQuery by rememberSaveable { mutableStateOf("") }
                     var previousScreenBeforeSettings by rememberSaveable { mutableIntStateOf(7) }
@@ -206,7 +207,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
                             screen == 13 -> screen = 11 // Quiz -> Chapter Detail
-                            screen == 11 -> screen = 10 // Chapter Detail -> Quest Map
+                            screen == 11 -> {
+                                currentSubtopicId = null
+                                screen = 10 // Chapter Detail -> Quest Map
+                            }
                             screen in listOf(7, 10, 8, 9, 12) -> {
                                 if (pagerState.currentPage != 0) {
                                     coroutineScope.launch {
@@ -303,9 +307,16 @@ class MainActivity : ComponentActivity() {
                         )
                         11 -> ChapterDetailScreen(
                             topicId = currentChapterId,
+                            subtopicId = currentSubtopicId,
                             learningViewModel = learningViewModel,
-                            onBack = { screen = 10 },
-                            onStartLesson = { _ ->
+                            onBack = {
+                                currentSubtopicId = null
+                                screen = 10
+                            },
+                            onStartLesson = { slug ->
+                                if (slug != null) {
+                                    visualizerViewModel.selectAlgorithmBySlug(slug)
+                                }
                                 screen = 8
                                 coroutineScope.launch { pagerState.animateScrollToPage(2) }
                             },
@@ -313,12 +324,15 @@ class MainActivity : ComponentActivity() {
                                 currentQuizLessonId = lessonId
                                 screen = 13
                             },
-                            onVisualize = {
+                            onVisualize = { slug ->
+                                if (slug != null) {
+                                    visualizerViewModel.selectAlgorithmBySlug(slug)
+                                }
                                 screen = 8
                                 coroutineScope.launch { pagerState.animateScrollToPage(2) }
                             },
-                            onAskAi = {
-                                aiQuery = "Explain Searching Algorithms and Divide & Conquer"
+                            onAskAi = { topicName ->
+                                aiQuery = "Explain ${topicName ?: "Searching Algorithms and Divide & Conquer"}"
                                 screen = 9
                                 coroutineScope.launch { pagerState.animateScrollToPage(3) }
                             },
@@ -418,6 +432,11 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onSelectChapter = { chId ->
                                                 currentChapterId = chId
+                                                currentSubtopicId = null
+                                                screen = 11
+                                            },
+                                            onSelectSubtopic = { subId ->
+                                                currentSubtopicId = subId
                                                 screen = 11
                                             },
                                             onSelectTab = ::onSelectTab,
@@ -477,7 +496,7 @@ class MainActivity : ComponentActivity() {
                                 }
 
                                 AlgoQuestBottomBar(
-                                    selectedTab = pagerState.currentPage,
+                                    selectedTab = screenToTab(screen),
                                     onSelectTab = ::onSelectTab
                                 )
                             }

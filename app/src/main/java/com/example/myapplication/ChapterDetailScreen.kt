@@ -1,5 +1,6 @@
 package com.example.myapplication
 
+import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +39,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -44,6 +47,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.myapplication.data.model.catalogue.TopicDifficulty
+import com.example.myapplication.data.repository.DsaTopicCatalogueRepository
 import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.viewmodel.LearningViewModel
 import com.example.myapplication.viewmodel.TopicDetailUiState
@@ -79,29 +84,41 @@ data class LessonItem(
 @Composable
 fun ChapterDetailScreen(
     topicId: Int = 3,
+    subtopicId: String? = null,
     learningViewModel: LearningViewModel? = null,
     onBack: () -> Unit = {},
-    onStartLesson: (lessonId: Int) -> Unit = {},
+    onStartLesson: (slug: String?) -> Unit = {},
     onOpenQuiz: (lessonId: Int) -> Unit = {},
-    onVisualize: () -> Unit = {},
-    onAskAi: () -> Unit = {},
+    onVisualize: (slug: String?) -> Unit = {},
+    onAskAi: (topicName: String?) -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    LaunchedEffect(topicId) {
-        learningViewModel?.loadTopicDetail(topicId)
+    val context = LocalContext.current
+
+    LaunchedEffect(topicId, subtopicId) {
+        if (subtopicId == null) {
+            learningViewModel?.loadTopicDetail(topicId)
+        }
     }
 
-    val detailState by learningViewModel?.detailState?.collectAsState() ?: androidx.compose.runtime.remember {
+    val subtopic = remember(subtopicId) {
+        subtopicId?.let { DsaTopicCatalogueRepository.getSubtopicById(it) }
+    }
+    val subtopicCategory = remember(subtopic) {
+        subtopic?.let { DsaTopicCatalogueRepository.getCategoryById(it.categoryId) }
+    }
+
+    val detailState by learningViewModel?.detailState?.collectAsState() ?: remember {
         androidx.compose.runtime.mutableStateOf(null)
     }
 
     val dynamicDetail = (detailState as? TopicDetailUiState.Success)?.data
 
-    val chapterTitle = dynamicDetail?.topic?.title ?: "Searching Algorithms"
-    val chapterLabel = dynamicDetail?.topic?.chapterLabel ?: "CHAPTER 03"
-    val chapterSubtitle = dynamicDetail?.topic?.subtitle ?: "Divide & Conquer Search"
-    val chapterDesc = dynamicDetail?.topic?.description ?: "Learn how cutting your search space in half reduces O(N) linear lookups into ultra-fast O(log N) operations."
-    val totalXp = dynamicDetail?.topic?.totalXp ?: 900
+    val chapterTitle = if (subtopic != null) subtopic.title else (dynamicDetail?.topic?.title ?: "Searching Algorithms")
+    val chapterLabel = if (subtopic != null) (subtopicCategory?.name?.uppercase() ?: "DSA TOPIC") else (dynamicDetail?.topic?.chapterLabel ?: "CHAPTER 03")
+    val chapterSubtitle = if (subtopic != null) subtopic.title else (dynamicDetail?.topic?.subtitle ?: "Divide & Conquer Search")
+    val chapterDesc = if (subtopic != null) subtopic.summary else (dynamicDetail?.topic?.description ?: "Learn how cutting your search space in half reduces O(N) linear lookups into ultra-fast O(log N) operations.")
+    val totalXp = if (subtopic != null) subtopic.xpReward else (dynamicDetail?.topic?.totalXp ?: 900)
     val progressPct = dynamicDetail?.topic?.progressPercentage ?: 40
     val completedCount = dynamicDetail?.topic?.completedLessons ?: 2
     val totalCount = dynamicDetail?.topic?.totalLessons ?: 5
@@ -146,6 +163,7 @@ fun ChapterDetailScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(
+                    modifier = Modifier.weight(1f, fill = false),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -162,19 +180,21 @@ fun ChapterDetailScreen(
                         IconCanvas(16.dp) { d -> drawChevronLeft(d, chevronColor) }
                     }
                     Text(
-                        text = "Chapter Details",
+                        text = if (subtopic != null) subtopic.title else "Chapter Details",
                         style = TextStyle(
                             fontFamily = Poppins,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 18.sp,
                             color = TextPrimary
-                        )
+                        ),
+                        maxLines = 1
                     )
                 }
+                Spacer(Modifier.width(8.dp))
                 Badge(chapterLabel, Purple.copy(alpha = 0.12f), PurpleSoft)
             }
 
-            // Chapter Hero Card
+            // Chapter / Subtopic Hero Card
             val heroShape = RoundedCornerShape(20.dp)
             Column(
                 modifier = Modifier
@@ -190,8 +210,20 @@ fun ChapterDetailScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Badge(chapterTitle.uppercase(), Cyan.copy(alpha = 0.12f), Cyan)
-                    Text(text = "+$totalXp XP Total", style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold))
+                    if (subtopic != null) {
+                        val (diffBg, diffColor) = when (subtopic.difficulty) {
+                            TopicDifficulty.EASY -> Pair(Green.copy(alpha = 0.15f), Green)
+                            TopicDifficulty.MEDIUM -> Pair(Gold.copy(alpha = 0.15f), Gold)
+                            TopicDifficulty.HARD -> Pair(Purple.copy(alpha = 0.15f), PurpleSoft)
+                        }
+                        Badge(subtopic.difficulty.displayName.uppercase(), diffBg, diffColor)
+                    } else {
+                        Badge(chapterTitle.uppercase(), Cyan.copy(alpha = 0.12f), Cyan)
+                    }
+                    Text(
+                        text = if (subtopic != null) "+${subtopic.xpReward} XP" else "+$totalXp XP Total",
+                        style = TextStyle(fontFamily = Mono, fontSize = 12.sp, color = Gold)
+                    )
                 }
 
                 Text(
@@ -199,7 +231,7 @@ fun ChapterDetailScreen(
                     style = TextStyle(
                         fontFamily = Poppins,
                         fontWeight = FontWeight.SemiBold,
-                        fontSize = 24.sp,
+                        fontSize = 22.sp,
                         color = TextPrimary
                     )
                 )
@@ -209,29 +241,45 @@ fun ChapterDetailScreen(
                     style = TextStyle(fontFamily = Inter, fontSize = 13.sp, lineHeight = 19.sp, color = TextSecondary)
                 )
 
-                // Progress bar
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                if (subtopic != null) {
+                    // Complexity & Duration Badges
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(text = "$completedCount of $totalCount lessons complete", style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary))
-                        Text(text = "$progressPct%", style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Cyan))
+                        if (!subtopic.timeComplexity.isNullOrEmpty()) {
+                            Badge("TIME: ${subtopic.timeComplexity}", Cyan.copy(alpha = 0.12f), Cyan)
+                        }
+                        if (!subtopic.spaceComplexity.isNullOrEmpty()) {
+                            Badge("SPACE: ${subtopic.spaceComplexity}", Purple.copy(alpha = 0.12f), PurpleSoft)
+                        }
+                        Badge("${subtopic.estimatedMinutes} MIN", Gold.copy(alpha = 0.12f), Gold)
                     }
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(Color.White.copy(alpha = 0.07f))
-                    ) {
+                } else {
+                    // Progress bar for legacy chapter
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(text = "$completedCount of $totalCount lessons complete", style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary))
+                            Text(text = "$progressPct%", style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Cyan))
+                        }
                         Box(
-                            Modifier
-                                .fillMaxWidth((progressPct / 100f).coerceIn(0.02f, 1f))
-                                .fillMaxHeight()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(6.dp)
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(Cyan)
-                        )
+                                .background(Color.White.copy(alpha = 0.07f))
+                        ) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth((progressPct / 100f).coerceIn(0.02f, 1f))
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(Cyan)
+                            )
+                        }
                     }
                 }
 
@@ -240,19 +288,40 @@ fun ChapterDetailScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    val canViz = if (subtopic != null) {
+                        subtopic.hasVisualizer && !subtopic.visualizerSlug.isNullOrEmpty()
+                    } else true
+
+                    val vizBtnBg = if (canViz) Purple else CardBg
+                    val vizBtnBorder = if (canViz) Modifier else Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+
                     Row(
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Purple)
-                            .clickable(onClick = onVisualize),
+                            .background(vizBtnBg)
+                            .then(vizBtnBorder)
+                            .clickable {
+                                if (subtopic != null) {
+                                    if (canViz) {
+                                        onVisualize(subtopic.visualizerSlug)
+                                    } else {
+                                        Toast.makeText(context, "Visualization for \"${subtopic.title}\" is coming soon!", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    onVisualize(null)
+                                }
+                            },
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconCanvas(16.dp) { d -> drawEye(d) }
                         Spacer(Modifier.width(6.dp))
-                        Text(text = "Visualize Lab", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color.White))
+                        Text(
+                            text = if (subtopic != null && !canViz) "Viz (Coming Soon)" else "Visualize Lab",
+                            style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = if (canViz) Color.White else TextMuted)
+                        )
                     }
 
                     val aiSparkleColor = PurpleSoft
@@ -263,7 +332,9 @@ fun ChapterDetailScreen(
                             .clip(RoundedCornerShape(12.dp))
                             .background(CardBg)
                             .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
-                            .clickable(onClick = onAskAi),
+                            .clickable {
+                                onAskAi(subtopic?.title ?: chapterTitle)
+                            },
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -275,26 +346,87 @@ fun ChapterDetailScreen(
             }
 
             Text(
-                text = "Lesson Roadmap",
+                text = if (subtopic != null) "Topic Learning Modules" else "Lesson Roadmap",
                 style = TextStyle(fontFamily = Poppins, fontWeight = FontWeight.SemiBold, fontSize = 16.sp, color = TextPrimary)
             )
 
-            // Lessons List
+            // Lessons / Modules List
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                lessons.forEach { lesson ->
+                if (subtopic != null) {
+                    // Module 1: Theory & Concept
                     LessonRowItem(
-                        lesson = lesson,
+                        lesson = LessonItem(
+                            id = 1,
+                            title = "Core Theory & Invariants: ${subtopic.title}",
+                            duration = "${(subtopic.estimatedMinutes * 0.4).toInt().coerceAtLeast(3)} min",
+                            xp = "+${subtopic.xpReward / 2} XP",
+                            isCompleted = false,
+                            isCurrent = true,
+                            isLocked = false
+                        ),
                         onClick = {
-                            if (lesson.isQuiz) {
-                                onOpenQuiz(lesson.id)
+                            Toast.makeText(context, "Topic Study: ${subtopic.summary}", Toast.LENGTH_LONG).show()
+                        }
+                    )
+
+                    // Module 2: Interactive Visualizer Lab
+                    val canViz = subtopic.hasVisualizer && !subtopic.visualizerSlug.isNullOrEmpty()
+                    LessonRowItem(
+                        lesson = LessonItem(
+                            id = 2,
+                            title = if (canViz) "Step Through Visualizer Lab" else "Interactive Visualizer Lab (In Development)",
+                            duration = "${(subtopic.estimatedMinutes * 0.6).toInt().coerceAtLeast(5)} min",
+                            xp = "+${subtopic.xpReward / 2} XP",
+                            isCompleted = false,
+                            isCurrent = canViz,
+                            isLocked = !canViz
+                        ),
+                        onClick = {
+                            if (canViz) {
+                                onVisualize(subtopic.visualizerSlug)
                             } else {
-                                onStartLesson(lesson.id)
+                                Toast.makeText(context, "Interactive visualizer for \"${subtopic.title}\" is coming soon!", Toast.LENGTH_SHORT).show()
                             }
                         }
                     )
+
+                    // Module 3: Quiz Assessment
+                    val canQuiz = subtopic.hasQuiz && subtopic.quizId != null
+                    LessonRowItem(
+                        lesson = LessonItem(
+                            id = 3,
+                            title = if (canQuiz) "Topic Mastery Quiz & Test" else "Topic Mastery Quiz (Coming Soon)",
+                            duration = "5 min",
+                            xp = "+50 XP",
+                            isCompleted = false,
+                            isCurrent = canQuiz,
+                            isLocked = !canQuiz,
+                            isQuiz = true
+                        ),
+                        onClick = {
+                            if (canQuiz) {
+                                onOpenQuiz(subtopic.quizId!!)
+                            } else {
+                                Toast.makeText(context, "Quiz assessment for \"${subtopic.title}\" is coming soon!", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    )
+                } else {
+                    lessons.forEach { lesson ->
+                        LessonRowItem(
+                            lesson = lesson,
+                            onClick = {
+                                if (lesson.isQuiz) {
+                                    onOpenQuiz(lesson.id)
+                                } else {
+                                    onStartLesson(null)
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }

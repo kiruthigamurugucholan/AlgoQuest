@@ -9,6 +9,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,6 +29,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -208,19 +211,21 @@ fun AlgoQuestBottomBar(
     val currentOnSelectTab by rememberUpdatedState(onSelectTab)
 
     var isDragging by remember { mutableStateOf(false) }
-    var dragX by remember { mutableStateOf(0f) }
-    var barWidthPx by remember { mutableStateOf(0) }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    var dragY by remember { mutableFloatStateOf(0f) }
+    var isOutside by remember { mutableStateOf(false) }
+    var barWidthPx by remember { mutableIntStateOf(0) }
 
-    val currentContinuousTab = remember(isDragging, dragX, barWidthPx, selectedTab) {
-        if (isDragging && barWidthPx > 0) {
+    val currentContinuousTab = remember(isDragging, dragX, barWidthPx, selectedTab, isOutside) {
+        if (isDragging && !isOutside && barWidthPx > 0) {
             BottomBarDragHelper.calculateContinuousTab(dragX, barWidthPx.toFloat())
         } else {
             selectedTab.toFloat()
         }
     }
 
-    val currentPreviewTab = remember(isDragging, dragX, barWidthPx, selectedTab) {
-        if (isDragging && barWidthPx > 0) {
+    val currentPreviewTab = remember(isDragging, dragX, barWidthPx, selectedTab, isOutside) {
+        if (isDragging && !isOutside && barWidthPx > 0) {
             BottomBarDragHelper.calculateClosestTab(dragX, barWidthPx.toFloat())
         } else {
             selectedTab
@@ -246,28 +251,40 @@ fun AlgoQuestBottomBar(
                 .fillMaxWidth()
                 .height(66.dp)
                 .onSizeChanged { barWidthPx = it.width }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
+                .pointerInput(barWidthPx) {
+                    detectDragGestures(
                         onDragStart = { offset ->
                             isDragging = true
                             dragX = offset.x
+                            dragY = offset.y
+                            isOutside = false
                         },
                         onDragEnd = {
-                            val finalTab = if (barWidthPx > 0) {
-                                BottomBarDragHelper.calculateClosestTab(dragX, barWidthPx.toFloat())
-                            } else currentSelectedTab
-
-                            isDragging = false
-                            if (finalTab != currentSelectedTab) {
-                                currentOnSelectTab(finalTab)
+                            if (isDragging && !isOutside && barWidthPx > 0) {
+                                val targetTab = BottomBarDragHelper.calculateClosestTab(dragX, barWidthPx.toFloat())
+                                if (targetTab != currentSelectedTab) {
+                                    currentOnSelectTab(targetTab)
+                                }
                             }
+                            isDragging = false
+                            isOutside = false
                         },
                         onDragCancel = {
                             isDragging = false
+                            isOutside = false
                         },
-                        onHorizontalDrag = { change, dragAmount ->
-                            dragX = (dragX + dragAmount).coerceIn(0f, barWidthPx.toFloat())
+                        onDrag = { change, _ ->
                             change.consume()
+                            dragX = change.position.x
+                            dragY = change.position.y
+
+                            val barHeightPx = size.height.toFloat()
+                            val verticalTolerance = 80f
+                            val horizontalTolerance = 40f
+                            isOutside = dragY < -verticalTolerance ||
+                                    dragY > (barHeightPx + verticalTolerance) ||
+                                    dragX < -horizontalTolerance ||
+                                    dragX > (barWidthPx + horizontalTolerance)
                         }
                     )
                 }
