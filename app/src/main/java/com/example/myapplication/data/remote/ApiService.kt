@@ -12,6 +12,8 @@ import com.example.myapplication.data.model.response.AlgorithmsData
 import com.example.myapplication.data.model.response.ApiResponse
 import com.example.myapplication.data.model.response.AuthData
 import com.example.myapplication.data.model.response.DashboardData
+import com.example.myapplication.data.model.response.LearningResourceData
+import com.example.myapplication.data.model.response.LearningResourceTopicsData
 import com.example.myapplication.data.model.response.LessonCompleteData
 import com.example.myapplication.data.model.response.ProfileData
 import com.example.myapplication.data.model.response.QuizData
@@ -24,6 +26,7 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
 import retrofit2.http.Path
+import retrofit2.http.Query
 
 interface ApiService {
 
@@ -80,5 +83,14 @@ interface ApiService {
 
     @POST("ai/visualizer-explain")
     suspend fun explainVisualizer(@Body req: com.example.myapplication.data.model.request.VisualizerAiRequest): Response<ApiResponse<com.example.myapplication.data.model.response.VisualizerAiData>>
+
+    @GET("learning-resources/topics")
+    suspend fun getLearningResourceTopics(): Response<ApiResponse<LearningResourceTopicsData>>
+
+    @GET("learning-resources")
+    suspend fun getLearningResource(
+        @Query("topic") topic: String,
+        @Query("refresh") refresh: Int? = null
+    ): Response<ApiResponse<LearningResourceData>>
 }
 

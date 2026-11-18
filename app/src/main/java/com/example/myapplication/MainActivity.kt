@@ -36,6 +36,7 @@ import com.example.myapplication.ui.theme.ThemePreferences
 import com.example.myapplication.viewmodel.AiChatViewModel
 import com.example.myapplication.viewmodel.AuthViewModel
 import com.example.myapplication.viewmodel.DashboardViewModel
+import com.example.myapplication.viewmodel.LearningResourceViewModel
 import com.example.myapplication.viewmodel.LearningViewModel
 import com.example.myapplication.viewmodel.ProfileViewModel
 import com.example.myapplication.viewmodel.QuizViewModel
@@ -113,15 +114,20 @@ class MainActivity : ComponentActivity() {
                     val quizViewModel = viewModelProvider[QuizViewModel::class.java]
                     val profileViewModel = viewModelProvider[ProfileViewModel::class.java]
                     val aiChatViewModel = viewModelProvider[AiChatViewModel::class.java]
+                    val learningResourceViewModel = viewModelProvider[LearningResourceViewModel::class.java]
 
                     // Navigation Screen indices:
                     // 0 = Splash, 1 = Onboarding, 2 = Visualize Intro, 3 = AI Ally Intro,
                     // 4 = Create Account, 5 = Login, 6 = Personalize, 7 = Home Dashboard,
                     // 8 = Algorithm Visualizer Lab, 9 = Quest AI Chat, 10 = Quest Map,
-                    // 11 = Chapter Detail, 12 = Explorer Profile, 13 = Quiz Screen, 14 = Settings Screen
+                    // 11 = Chapter Detail, 12 = Explorer Profile, 13 = Quiz Screen, 14 = Settings Screen,
+                    // 15 = Lesson Screen, 16 = Learning Resources (Web Scraper)
                     var screen by rememberSaveable { mutableIntStateOf(0) }
                     var currentChapterId by rememberSaveable { mutableIntStateOf(3) }
                     var currentSubtopicId by rememberSaveable { mutableStateOf<String?>(null) }
+                    var currentCatalogueLessonId by rememberSaveable { mutableStateOf<String?>(null) }
+                    var currentResourceTopic by rememberSaveable { mutableStateOf<String?>(null) }
+                    var previousScreenBeforeResources by rememberSaveable { mutableIntStateOf(10) }
                     var currentQuizLessonId by rememberSaveable { mutableIntStateOf(5) }
                     var aiQuery by rememberSaveable { mutableStateOf("") }
                     var previousScreenBeforeSettings by rememberSaveable { mutableIntStateOf(7) }
@@ -206,9 +212,21 @@ class MainActivity : ComponentActivity() {
                                     coroutineScope.launch { pagerState.animateScrollToPage(0) }
                                 }
                             }
+                            screen == 16 -> {
+                                currentResourceTopic = null
+                                screen = previousScreenBeforeResources
+                                if (previousScreenBeforeResources == 10) {
+                                    coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                                }
+                            }
+                            screen == 15 -> {
+                                currentCatalogueLessonId = null
+                                screen = 11 // Lesson Screen -> Topic/Chapter Detail
+                            }
                             screen == 13 -> screen = 11 // Quiz -> Chapter Detail
                             screen == 11 -> {
                                 currentSubtopicId = null
+                                currentCatalogueLessonId = null
                                 screen = 10 // Chapter Detail -> Quest Map
                             }
                             screen in listOf(7, 10, 8, 9, 12) -> {
@@ -311,6 +329,7 @@ class MainActivity : ComponentActivity() {
                             learningViewModel = learningViewModel,
                             onBack = {
                                 currentSubtopicId = null
+                                currentCatalogueLessonId = null
                                 screen = 10
                             },
                             onStartLesson = { slug ->
@@ -319,6 +338,16 @@ class MainActivity : ComponentActivity() {
                                 }
                                 screen = 8
                                 coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                            },
+                            onOpenCatalogueLesson = { subId, lesId ->
+                                currentSubtopicId = subId
+                                currentCatalogueLessonId = lesId
+                                screen = 15
+                            },
+                            onOpenLearningResources = { topicName ->
+                                previousScreenBeforeResources = 11
+                                currentResourceTopic = topicName
+                                screen = 16
                             },
                             onOpenQuiz = { lessonId ->
                                 currentQuizLessonId = lessonId
@@ -372,6 +401,54 @@ class MainActivity : ComponentActivity() {
                                     coroutineScope.launch { pagerState.animateScrollToPage(0) }
                                 }
                             }
+                        )
+                        15 -> LessonScreen(
+                            subtopicId = currentSubtopicId ?: "prog_intro_ds",
+                            lessonId = currentCatalogueLessonId ?: "prog_intro_ds_l1",
+                            learningViewModel = learningViewModel,
+                            onBack = {
+                                currentCatalogueLessonId = null
+                                screen = 11
+                            },
+                            onOpenLesson = { nextLessonId ->
+                                currentCatalogueLessonId = nextLessonId
+                            },
+                            onVisualize = { slug ->
+                                visualizerViewModel.selectAlgorithmBySlug(slug)
+                                screen = 8
+                                coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                            },
+                            onOpenQuiz = { quizId ->
+                                currentQuizLessonId = quizId
+                                screen = 13
+                            },
+                            onAskAi = { query ->
+                                aiQuery = query
+                                screen = 9
+                                coroutineScope.launch { pagerState.animateScrollToPage(3) }
+                            },
+                            onLessonCompletedSynced = {
+                                dashboardViewModel.loadDashboard()
+                                profileViewModel.loadProfile()
+                            },
+                            onSelectTab = ::onSelectTab
+                        )
+                        16 -> LearningResourcesScreen(
+                            viewModel = learningResourceViewModel,
+                            initialTopic = currentResourceTopic,
+                            onBack = {
+                                currentResourceTopic = null
+                                screen = previousScreenBeforeResources
+                                if (previousScreenBeforeResources == 10) {
+                                    coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                                }
+                            },
+                            onAskAi = { query ->
+                                aiQuery = query
+                                screen = 9
+                                coroutineScope.launch { pagerState.animateScrollToPage(3) }
+                            },
+                            onSelectTab = ::onSelectTab
                         )
                         else -> {
                             // Main 5 Tabs managed by HorizontalPager with stationary bottom bar
@@ -439,6 +516,11 @@ class MainActivity : ComponentActivity() {
                                                 currentSubtopicId = subId
                                                 screen = 11
                                             },
+                                            onOpenLearningResources = { topicName ->
+                                                previousScreenBeforeResources = 10
+                                                currentResourceTopic = topicName
+                                                screen = 16
+                                            },
                                             onSelectTab = ::onSelectTab,
                                             showBottomBar = false
                                         )
@@ -481,8 +563,12 @@ class MainActivity : ComponentActivity() {
                                                     profileViewModel.clearState()
                                                     dashboardViewModel.clearState()
                                                     learningViewModel.clearState()
+                                                    learningResourceViewModel.clearState()
                                                     aiChatViewModel.clearState()
                                                     quizViewModel.reset()
+                                                    currentSubtopicId = null
+                                                    currentCatalogueLessonId = null
+                                                    currentResourceTopic = null
                                                     coroutineScope.launch {
                                                         pagerState.scrollToPage(0)
                                                     }

@@ -1,10 +1,14 @@
 package com.example.myapplication.viewmodel
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.model.catalogue.DsaLessonContent
+import com.example.myapplication.data.model.catalogue.LessonCompletionResult
 import com.example.myapplication.data.model.response.TopicDetailData
 import com.example.myapplication.data.model.response.TopicItemDto
+import com.example.myapplication.data.remote.TokenManager
 import com.example.myapplication.data.repository.LearningRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +29,10 @@ sealed class TopicDetailUiState {
 
 class LearningViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = LearningRepository(application)
+    private val cataloguePrefs = application.getSharedPreferences(
+        "algoquest_catalogue_progress",
+        Context.MODE_PRIVATE
+    )
 
     private val _topicsState = MutableStateFlow<TopicsUiState>(TopicsUiState.Loading)
     val topicsState: StateFlow<TopicsUiState> = _topicsState.asStateFlow()
@@ -32,7 +40,45 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     private val _detailState = MutableStateFlow<TopicDetailUiState>(TopicDetailUiState.Loading)
     val detailState: StateFlow<TopicDetailUiState> = _detailState.asStateFlow()
 
+    private val _completedCatalogueLessonIds = MutableStateFlow<Set<String>>(emptySet())
+    val completedCatalogueLessonIds: StateFlow<Set<String>> = _completedCatalogueLessonIds.asStateFlow()
+
+    private val _isCompletingCatalogueLesson = MutableStateFlow(false)
+    val isCompletingCatalogueLesson: StateFlow<Boolean> = _isCompletingCatalogueLesson.asStateFlow()
+
+    private val _catalogueCompletionResult = MutableStateFlow<LessonCompletionResult?>(null)
+    val catalogueCompletionResult: StateFlow<LessonCompletionResult?> = _catalogueCompletionResult.asStateFlow()
+
+    init {
+        loadCatalogueProgress()
+    }
+
+    private fun cataloguePrefsKey(): String {
+        val userId = TokenManager.getInstance(getApplication()).getUserId() ?: "guest"
+        return "completed_catalogue_lessons_$userId"
+    }
+
+    fun loadCatalogueProgress() {
+        val saved = cataloguePrefs.getStringSet(cataloguePrefsKey(), emptySet()) ?: emptySet()
+        _completedCatalogueLessonIds.value = saved.toSet()
+    }
+
+    private fun persistCompletedCatalogueLesson(lessonId: String) {
+        val updated = _completedCatalogueLessonIds.value + lessonId
+        _completedCatalogueLessonIds.value = updated
+        cataloguePrefs.edit().putStringSet(cataloguePrefsKey(), updated).apply()
+    }
+
+    fun isCatalogueLessonCompleted(lessonId: String): Boolean {
+        return _completedCatalogueLessonIds.value.contains(lessonId)
+    }
+
+    fun clearCatalogueCompletionResult() {
+        _catalogueCompletionResult.value = null
+    }
+
     fun loadTopics() {
+        loadCatalogueProgress()
         _topicsState.value = TopicsUiState.Loading
         viewModelScope.launch {
             repository.getTopics().fold(
@@ -87,9 +133,106 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
+    /**
+     * Marks a structured DSA Catalogue lesson as completed.
+     * - If `lesson.backendLessonId` is mapped to the PHP/MySQL `lessons` table, delegates XP
+     *   awarding exclusively to the existing server-authoritative `repository.completeLesson` API.
+     * - If not yet mapped on the backend, saves completion progress locally per user without
+     *   fabricating fake backend XP.
+     */
+    fun completeCatalogueLesson(
+        lesson: DsaLessonContent,
+        onSyncedWithBackend: () -> Unit = {},
+        onResult: (LessonCompletionResult) -> Unit = {}
+    ) {
+        if (_isCompletingCatalogueLesson.value) return
+
+        // Idempotent guard: already completed
+        if (_completedCatalogueLessonIds.value.contains(lesson.lessonId)) {
+            val alreadyDone = LessonCompletionResult(
+                lessonId = lesson.lessonId,
+                isCompleted = true,
+                xpAwarded = 0,
+                syncedWithBackend = lesson.backendLessonId != null,
+                message = "Lesson already completed. Progress preserved."
+            )
+            _catalogueCompletionResult.value = alreadyDone
+            onResult(alreadyDone)
+            return
+        }
+
+        val backendLessonId = lesson.backendLessonId
+        if (backendLessonId != null) {
+            _isCompletingCatalogueLesson.value = true
+            viewModelScope.launch {
+                repository.completeLesson(backendLessonId).fold(
+                    onSuccess = { data ->
+                        persistCompletedCatalogueLesson(lesson.lessonId)
+                        com.example.myapplication.reminder.ReminderPreferences
+                            .getInstance(getApplication())
+                            .markDailyActivityCompleted()
+                        lesson.backendTopicId?.let { loadTopicDetail(it) }
+                        com.example.myapplication.data.repository.ProfileRepository(getApplication())
+                            .getProfile()
+                            .onSuccess { profileData ->
+                                com.example.myapplication.reminder.ReminderScheduler
+                                    .checkAndNotifyAchievements(getApplication(), profileData)
+                            }
+                        val msg = if (data.xpAwarded > 0) {
+                            "Lesson completed! +${data.xpAwarded} XP synced to your profile."
+                        } else {
+                            "Lesson completed! Progress preserved."
+                        }
+                        val result = LessonCompletionResult(
+                            lessonId = lesson.lessonId,
+                            isCompleted = true,
+                            xpAwarded = data.xpAwarded,
+                            syncedWithBackend = true,
+                            message = msg
+                        )
+                        _catalogueCompletionResult.value = result
+                        _isCompletingCatalogueLesson.value = false
+                        onSyncedWithBackend()
+                        onResult(result)
+                    },
+                    onFailure = { err ->
+                        val result = LessonCompletionResult(
+                            lessonId = lesson.lessonId,
+                            isCompleted = false,
+                            xpAwarded = 0,
+                            syncedWithBackend = false,
+                            message = err.message ?: "Could not sync completion with server. Please try again."
+                        )
+                        _catalogueCompletionResult.value = result
+                        _isCompletingCatalogueLesson.value = false
+                        onResult(result)
+                    }
+                )
+            }
+        } else {
+            // Offline-first catalogue lesson: save completion locally without fabricating backend XP
+            persistCompletedCatalogueLesson(lesson.lessonId)
+            com.example.myapplication.reminder.ReminderPreferences
+                .getInstance(getApplication())
+                .markDailyActivityCompleted()
+            val result = LessonCompletionResult(
+                lessonId = lesson.lessonId,
+                isCompleted = true,
+                xpAwarded = 0,
+                syncedWithBackend = false,
+                message = "Lesson marked as completed! Your topic progress is saved locally (XP syncs automatically when backend syllabus mapping is enabled)."
+            )
+            _catalogueCompletionResult.value = result
+            onResult(result)
+        }
+    }
+
     fun clearState() {
         _topicsState.value = TopicsUiState.Loading
         _detailState.value = TopicDetailUiState.Loading
+        _completedCatalogueLessonIds.value = emptySet()
+        _isCompletingCatalogueLesson.value = false
+        _catalogueCompletionResult.value = null
     }
 }
 

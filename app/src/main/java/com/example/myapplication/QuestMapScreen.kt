@@ -114,6 +114,7 @@ fun QuestMapScreen(
     onBack: () -> Unit = {},
     onSelectChapter: (chapterId: Int) -> Unit = {},
     onSelectSubtopic: (subtopicId: String) -> Unit = {},
+    onOpenLearningResources: (initialTopic: String?) -> Unit = {},
     onSelectTab: (Int) -> Unit = {},
     showBottomBar: Boolean = true
 ) {
@@ -334,6 +335,51 @@ fun QuestMapScreen(
                         )
                     )
                 }
+            }
+
+            // Quick Entry to Web Learning Resources (Python Scraper + PHP/MySQL Integration)
+            val webResShape = RoundedCornerShape(14.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(webResShape)
+                    .background(CardBg)
+                    .border(
+                        1.dp,
+                        Brush.horizontalGradient(listOf(cyan.copy(alpha = 0.45f), purple.copy(alpha = 0.45f))),
+                        webResShape
+                    )
+                    .clickable { onOpenLearningResources(null) }
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    Text(
+                        text = "Web Learning Resources",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp,
+                            color = textPrimary
+                        )
+                    )
+                    Text(
+                        text = "Search curated DSA explanations & articles (20 topics)",
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontSize = 11.sp,
+                            color = textSecondary
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(Modifier.width(8.dp))
+                Badge("EXPLORE", cyan.copy(alpha = 0.16f), cyan)
             }
 
             if (selectedMode == QuestMapMode.ROADMAP) {
