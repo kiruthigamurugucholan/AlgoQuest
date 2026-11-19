@@ -61,6 +61,13 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
     fun loadCatalogueProgress() {
         val saved = cataloguePrefs.getStringSet(cataloguePrefsKey(), emptySet()) ?: emptySet()
         _completedCatalogueLessonIds.value = saved.toSet()
+        viewModelScope.launch {
+            repository.getCatalogueProgress().onSuccess { data ->
+                val merged = _completedCatalogueLessonIds.value + data.completedLessonIds
+                _completedCatalogueLessonIds.value = merged
+                cataloguePrefs.edit().putStringSet(cataloguePrefsKey(), merged).apply()
+            }
+        }
     }
 
     private fun persistCompletedCatalogueLesson(lessonId: String) {
@@ -210,20 +217,61 @@ class LearningViewModel(application: Application) : AndroidViewModel(application
                 )
             }
         } else {
-            // Offline-first catalogue lesson: save completion locally without fabricating backend XP
-            persistCompletedCatalogueLesson(lesson.lessonId)
-            com.example.myapplication.reminder.ReminderPreferences
-                .getInstance(getApplication())
-                .markDailyActivityCompleted()
-            val result = LessonCompletionResult(
-                lessonId = lesson.lessonId,
-                isCompleted = true,
-                xpAwarded = 0,
-                syncedWithBackend = false,
-                message = "Lesson marked as completed! Your topic progress is saved locally (XP syncs automatically when backend syllabus mapping is enabled)."
-            )
-            _catalogueCompletionResult.value = result
-            onResult(result)
+            // Dedicated catalogue lesson completion synced to PHP / MySQL backend
+            _isCompletingCatalogueLesson.value = true
+            viewModelScope.launch {
+                repository.completeCatalogueLesson(
+                    subtopicId = lesson.subtopicId,
+                    lessonId = lesson.lessonId,
+                    xpReward = lesson.xpReward
+                ).fold(
+                    onSuccess = { data ->
+                        persistCompletedCatalogueLesson(lesson.lessonId)
+                        com.example.myapplication.reminder.ReminderPreferences
+                            .getInstance(getApplication())
+                            .markDailyActivityCompleted()
+                        com.example.myapplication.data.repository.ProfileRepository(getApplication())
+                            .getProfile()
+                            .onSuccess { profileData ->
+                                com.example.myapplication.reminder.ReminderScheduler
+                                    .checkAndNotifyAchievements(getApplication(), profileData)
+                            }
+                        val msg = if (data.xpAwarded > 0) {
+                            "Lesson completed! +${data.xpAwarded} XP synced to your profile."
+                        } else {
+                            "Lesson completed! Progress preserved."
+                        }
+                        val result = LessonCompletionResult(
+                            lessonId = lesson.lessonId,
+                            isCompleted = true,
+                            xpAwarded = data.xpAwarded,
+                            syncedWithBackend = true,
+                            message = msg
+                        )
+                        _catalogueCompletionResult.value = result
+                        _isCompletingCatalogueLesson.value = false
+                        onSyncedWithBackend()
+                        onResult(result)
+                    },
+                    onFailure = {
+                        // Offline-resilient fallback: save locally so user progress is never lost
+                        persistCompletedCatalogueLesson(lesson.lessonId)
+                        com.example.myapplication.reminder.ReminderPreferences
+                            .getInstance(getApplication())
+                            .markDailyActivityCompleted()
+                        val result = LessonCompletionResult(
+                            lessonId = lesson.lessonId,
+                            isCompleted = true,
+                            xpAwarded = 0,
+                            syncedWithBackend = false,
+                            message = "Lesson saved locally. Will sync with server when back online."
+                        )
+                        _catalogueCompletionResult.value = result
+                        _isCompletingCatalogueLesson.value = false
+                        onResult(result)
+                    }
+                )
+            }
         }
     }
 

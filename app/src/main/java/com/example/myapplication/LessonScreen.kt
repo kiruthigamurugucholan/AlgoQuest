@@ -27,6 +27,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -51,12 +53,14 @@ import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.model.catalogue.DsaLessonContent
 import com.example.myapplication.data.model.catalogue.DsaLessonOutline
 import com.example.myapplication.data.model.catalogue.LessonCodeBlock
+import com.example.myapplication.data.model.catalogue.LessonPracticeQuestion
 import com.example.myapplication.data.model.catalogue.LessonSection
 import com.example.myapplication.data.model.catalogue.LessonSectionType
 import com.example.myapplication.data.model.catalogue.TopicDifficulty
 import com.example.myapplication.data.repository.DsaLessonContentRepository
 import com.example.myapplication.data.repository.DsaTopicCatalogueRepository
 import com.example.myapplication.ui.theme.AlgoTheme
+import com.example.myapplication.ui.visualizer.DsaUniversalVisualizer
 import com.example.myapplication.viewmodel.LearningViewModel
 
 private val LessonBg: Color @Composable get() = AlgoTheme.colors.bg
@@ -122,6 +126,10 @@ fun LessonScreen(
 
     val isCompleted = completedIds.contains(lessonId)
 
+    var currentMode by remember(lessonId) {
+        mutableStateOf(if (lessonId.endsWith("_viz")) "VISUALIZE" else "LEARN")
+    }
+
     val currentLessonNumber = lessonContent?.lessonNumber ?: currentOutline?.lessonNumber ?: 1
     val totalLessonsInTopic = outlines.size.coerceAtLeast(1)
 
@@ -138,13 +146,18 @@ fun LessonScreen(
 
     fun navigateToOutline(outline: DsaLessonOutline) {
         when {
-            outline.lessonType == "VISUALIZER" && outline.hasContent && !outline.visualizerSlug.isNullOrEmpty() -> {
-                onVisualize(outline.visualizerSlug)
+            outline.lessonType == "VISUALIZER" -> {
+                currentMode = "VISUALIZE"
             }
-            outline.lessonType == "QUIZ" && outline.hasContent && outline.quizLessonId != null -> {
-                onOpenQuiz(outline.quizLessonId)
+            outline.lessonType == "QUIZ" -> {
+                if (outline.quizLessonId != null) {
+                    onOpenQuiz(outline.quizLessonId)
+                } else {
+                    currentMode = "PRACTICE"
+                }
             }
             else -> {
+                currentMode = "LEARN"
                 onOpenLesson(outline.lessonId)
             }
         }
@@ -378,64 +391,240 @@ fun LessonScreen(
                 }
             }
 
-            // 3. Body: Either Full Structured Lesson OR Coming Soon State
-            if (lessonContent != null) {
-                // Educational Sections
-                lessonContent.sections.forEach { section ->
-                    LessonSectionCard(section = section)
-                }
-
-                // Code Examples with Step-by-Step Explanations
-                if (lessonContent.codeExamples.isNotEmpty()) {
-                    Text(
-                        text = "Code Examples & Walkthrough",
-                        style = TextStyle(
-                            fontFamily = LessonPoppins,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                            color = textPrimary
+            // 2.5 Mode Switcher Tabs: Learn | Visualize | Practice
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    "LEARN" to "📖 Learn",
+                    "VISUALIZE" to "👁️ Visualize",
+                    "PRACTICE" to "✍️ Practice"
+                ).forEach { (mode, label) ->
+                    val selected = currentMode == mode
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (selected) purple else cardBg)
+                            .border(
+                                1.dp,
+                                if (selected) cyan else border,
+                                RoundedCornerShape(10.dp)
+                            )
+                            .clickable { currentMode = mode },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            style = TextStyle(
+                                fontFamily = LessonInter,
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                fontSize = 12.5.sp,
+                                color = if (selected) Color.White else textSecondary
+                            )
                         )
+                    }
+                }
+            }
+
+            // 3. Body: Driven by Current Mode
+            when (currentMode) {
+                "VISUALIZE" -> {
+                    DsaUniversalVisualizer(
+                        subtopicId = subtopicId,
+                        isLabCompleted = completedIds.contains("${subtopicId}_viz"),
+                        onCompleteLab = {
+                            val vizOutline = outlines.firstOrNull { it.lessonType == "VISUALIZER" }
+                            val vizId = vizOutline?.lessonId ?: "${subtopicId}_viz"
+                            val xp = vizOutline?.xpReward ?: 25
+                            val syntheticLesson = DsaLessonContent(
+                                lessonId = vizId,
+                                subtopicId = subtopicId,
+                                lessonNumber = vizOutline?.lessonNumber ?: 2,
+                                title = vizOutline?.title ?: "Interactive Visualizer Lab",
+                                subtitle = "Interactive Visualizer Lab for ${subtopic?.name ?: "this topic"}",
+                                estimatedMinutes = 5,
+                                xpReward = xp,
+                                sections = emptyList()
+                            )
+                            learningViewModel?.completeCatalogueLesson(
+                                lesson = syntheticLesson,
+                                onSyncedWithBackend = onLessonCompletedSynced
+                            )
+                        }
                     )
-                    lessonContent.codeExamples.forEach { block ->
-                        LessonCodeBlockCard(codeBlock = block)
+                }
+
+                "PRACTICE" -> {
+                    if (lessonContent != null && lessonContent.practiceQuestions.isNotEmpty()) {
+                        LessonPracticeQuestionsCard(questions = lessonContent.practiceQuestions)
+                    } else {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(cardBg)
+                                .border(1.dp, border, RoundedCornerShape(14.dp))
+                                .padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = "Topic Practice & Challenge",
+                                style = TextStyle(fontFamily = LessonPoppins, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textPrimary)
+                            )
+                            Text(
+                                text = "Test your knowledge on ${subtopic?.name ?: "this topic"} with interactive challenge questions.",
+                                style = TextStyle(fontFamily = LessonInter, fontSize = 12.5.sp, color = textSecondary)
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(purple)
+                                    .clickable {
+                                        val quizOutline = outlines.firstOrNull { it.lessonType == "QUIZ" && it.quizLessonId != null }
+                                        if (quizOutline?.quizLessonId != null) {
+                                            onOpenQuiz(quizOutline.quizLessonId)
+                                        } else {
+                                            onAskAi("Give me a challenging practice quiz question on ${subtopic?.name ?: "this DSA topic"}.")
+                                        }
+                                    }
+                                    .padding(vertical = 10.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "Start Topic Challenge",
+                                    style = TextStyle(fontFamily = LessonInter, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Key Takeaways Summary Card
-                if (lessonContent.keyTakeaways.isNotEmpty()) {
-                    KeyTakeawaysCard(takeaways = lessonContent.keyTakeaways)
-                }
+                else -> {
+                    // "LEARN" mode: Full structured lesson content
+                    if (lessonContent != null) {
+                        // Learning Objectives Card
+                        if (lessonContent.learningObjectives.isNotEmpty()) {
+                            LearningObjectivesCard(objectives = lessonContent.learningObjectives)
+                        }
 
-                // Completion & XP Reward Section
-                LessonCompletionCard(
-                    lesson = lessonContent,
-                    isCompleted = isCompleted,
-                    isSubmitting = isCompleting,
-                    feedbackMessage = completionResult
-                        ?.takeIf { it.lessonId == lessonContent.lessonId }
-                        ?.message,
-                    feedbackIsSuccess = completionResult?.isCompleted ?: isCompleted,
-                    onMarkCompleted = {
-                        learningViewModel?.completeCatalogueLesson(
+                        // Complexity Analysis Card
+                        val effectiveTime = lessonContent.timeComplexity ?: subtopic?.timeComplexity
+                        val effectiveSpace = lessonContent.spaceComplexity ?: subtopic?.spaceComplexity
+                        if (!effectiveTime.isNullOrBlank() || !effectiveSpace.isNullOrBlank()) {
+                            ComplexityAnalysisCard(timeComplexity = effectiveTime, spaceComplexity = effectiveSpace)
+                        }
+
+                        // Interactive Visualization Quick Card
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(Brush.horizontalGradient(listOf(purple.copy(alpha = 0.25f), cyan.copy(alpha = 0.15f))))
+                                .border(1.dp, cyan.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                                .clickable { currentMode = "VISUALIZE" }
+                                .padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(purple.copy(alpha = 0.3f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                LessonIconCanvas(18.dp) { d -> drawLessonSparkles(d, cyan) }
+                            }
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                Text(
+                                    text = "Interactive Visualization Available",
+                                    style = TextStyle(fontFamily = LessonPoppins, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp, color = textPrimary)
+                                )
+                                Text(
+                                    text = "Watch ${subtopic?.name ?: "this algorithm"} execute step by step with play/pause and custom inputs",
+                                    style = TextStyle(fontFamily = LessonInter, fontSize = 11.5.sp, color = textSecondary)
+                                )
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(purple)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = "Visualize ▶",
+                                    style = TextStyle(fontFamily = LessonInter, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = Color.White)
+                                )
+                            }
+                        }
+
+                        // Educational Sections
+                        lessonContent.sections.forEach { section ->
+                            LessonSectionCard(section = section)
+                        }
+
+                        // Code Examples with Step-by-Step Explanations
+                        if (lessonContent.codeExamples.isNotEmpty()) {
+                            Text(
+                                text = "Code Examples & Walkthrough",
+                                style = TextStyle(
+                                    fontFamily = LessonPoppins,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 16.sp,
+                                    color = textPrimary
+                                )
+                            )
+                            lessonContent.codeExamples.forEach { block ->
+                                LessonCodeBlockCard(codeBlock = block)
+                            }
+                        }
+
+                        // Key Takeaways Summary Card
+                        if (lessonContent.keyTakeaways.isNotEmpty()) {
+                            KeyTakeawaysCard(takeaways = lessonContent.keyTakeaways)
+                        }
+
+                        // Interactive Practice Questions Card
+                        if (lessonContent.practiceQuestions.isNotEmpty()) {
+                            LessonPracticeQuestionsCard(questions = lessonContent.practiceQuestions)
+                        }
+
+                        // Completion & XP Reward Section
+                        LessonCompletionCard(
                             lesson = lessonContent,
-                            onSyncedWithBackend = onLessonCompletedSynced
+                            isCompleted = isCompleted,
+                            isSubmitting = isCompleting,
+                            feedbackMessage = completionResult
+                                ?.takeIf { it.lessonId == lessonContent.lessonId }
+                                ?.message,
+                            feedbackIsSuccess = completionResult?.isCompleted ?: isCompleted,
+                            onMarkCompleted = {
+                                learningViewModel?.completeCatalogueLesson(
+                                    lesson = lessonContent,
+                                    onSyncedWithBackend = onLessonCompletedSynced
+                                )
+                            }
+                        )
+                    } else {
+                        // Dedicated Coming Soon Screen (replaces any Toast behaviour)
+                        LessonComingSoonCard(
+                            categoryName = category?.name ?: "DSA Catalogue",
+                            topicName = subtopic?.name ?: "This Topic",
+                            topicDescription = subtopic?.description
+                                ?: "Structured lesson content for this topic is currently being authored.",
+                            lessonType = currentOutline?.lessonType ?: "THEORY",
+                            onAskAi = {
+                                val topicLabel = subtopic?.name ?: "this DSA topic"
+                                onAskAi("Teach me $topicLabel with beginner-friendly explanations, real-world examples, and Kotlin code.")
+                            },
+                            onBackToTopic = onBack
                         )
                     }
-                )
-            } else {
-                // Dedicated Coming Soon Screen (replaces any Toast behaviour)
-                LessonComingSoonCard(
-                    categoryName = category?.name ?: "DSA Catalogue",
-                    topicName = subtopic?.name ?: "This Topic",
-                    topicDescription = subtopic?.description
-                        ?: "Structured lesson content for this topic is currently being authored.",
-                    lessonType = currentOutline?.lessonType ?: "THEORY",
-                    onAskAi = {
-                        val topicLabel = subtopic?.name ?: "this DSA topic"
-                        onAskAi("Teach me $topicLabel with beginner-friendly explanations, real-world examples, and Kotlin code.")
-                    },
-                    onBackToTopic = onBack
-                )
+                }
             }
 
             // 4. Ask AI Ally Helper Card (shown on implemented lessons)
@@ -580,6 +769,146 @@ fun LessonScreen(
 
         // Shared Bottom Navigation Bar
         AlgoQuestBottomBar(selectedTab = 1, onSelectTab = onSelectTab)
+    }
+}
+
+@Composable
+private fun LearningObjectivesCard(objectives: List<String>) {
+    val activeCardBg = LessonActiveCardBg
+    val cyan = LessonCyan
+    val textPrimary = LessonTextPrimary
+
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(activeCardBg)
+            .border(1.dp, cyan.copy(alpha = 0.4f), shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        LessonBadge("LEARNING OBJECTIVES", cyan.copy(alpha = 0.16f), cyan)
+
+        Text(
+            text = "What You'll Master in This Lesson",
+            style = TextStyle(
+                fontFamily = LessonPoppins,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                color = textPrimary
+            )
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            objectives.forEach { obj ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .padding(top = 3.dp)
+                            .size(16.dp)
+                            .clip(CircleShape)
+                            .background(cyan.copy(alpha = 0.18f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        LessonIconCanvas(10.dp) { d -> drawLessonCheck(d, cyan) }
+                    }
+                    Text(
+                        text = obj,
+                        style = TextStyle(
+                            fontFamily = LessonInter,
+                            fontSize = 13.sp,
+                            lineHeight = 19.sp,
+                            color = textPrimary.copy(alpha = 0.92f)
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComplexityAnalysisCard(timeComplexity: String?, spaceComplexity: String?) {
+    val cardBg = LessonCardBg
+    val border = LessonBorder
+    val cyan = LessonCyan
+    val purple = LessonPurpleSoft
+    val green = LessonGreen
+    val textPrimary = LessonTextPrimary
+
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(cardBg)
+            .border(1.dp, border, shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        LessonBadge("ASYMPTOTIC COMPLEXITY", green.copy(alpha = 0.14f), green)
+
+        Text(
+            text = "Algorithm Efficiency Profile",
+            style = TextStyle(
+                fontFamily = LessonPoppins,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp,
+                color = textPrimary
+            )
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            if (!timeComplexity.isNullOrBlank()) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(cyan.copy(alpha = 0.08f))
+                        .border(1.dp, cyan.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "TIME COMPLEXITY",
+                        style = TextStyle(fontFamily = LessonMono, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = cyan)
+                    )
+                    Text(
+                        text = timeComplexity,
+                        style = TextStyle(fontFamily = LessonMono, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                    )
+                }
+            }
+            if (!spaceComplexity.isNullOrBlank()) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(purple.copy(alpha = 0.08f))
+                        .border(1.dp, purple.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "SPACE COMPLEXITY",
+                        style = TextStyle(fontFamily = LessonMono, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = purple)
+                    )
+                    Text(
+                        text = spaceComplexity,
+                        style = TextStyle(fontFamily = LessonMono, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = textPrimary)
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -882,6 +1211,134 @@ private fun KeyTakeawaysCard(takeaways: List<String>) {
                         ),
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LessonPracticeQuestionsCard(questions: List<LessonPracticeQuestion>) {
+    val cardBg = LessonCardBg
+    val border = LessonBorder
+    val textPrimary = LessonTextPrimary
+    val textSecondary = LessonTextSecondary
+    val purple = LessonPurple
+    val purpleSoft = LessonPurpleSoft
+    val green = LessonGreen
+    val red = Color(0xFFEF5350)
+
+    val selectedAnswers = remember { mutableStateMapOf<String, Int>() }
+
+    val shape = RoundedCornerShape(16.dp)
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(cardBg)
+            .border(1.dp, purple.copy(alpha = 0.4f), shape)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        LessonBadge("PRACTICE QUESTIONS & QUIZ", purple.copy(alpha = 0.16f), purpleSoft)
+
+        Text(
+            text = "Test Your Understanding",
+            style = TextStyle(
+                fontFamily = LessonPoppins,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 16.sp,
+                color = textPrimary
+            )
+        )
+
+        questions.forEachIndexed { qIdx, pq ->
+            val selectedOption = selectedAnswers[pq.id]
+            val hasAnswered = selectedOption != null
+            val isCorrect = selectedOption == pq.correctOptionIndex
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(LessonActiveCardBg)
+                    .border(1.dp, border, RoundedCornerShape(12.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Q${qIdx + 1}. ${pq.question}",
+                    style = TextStyle(
+                        fontFamily = LessonInter,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp,
+                        lineHeight = 20.sp,
+                        color = textPrimary
+                    )
+                )
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    pq.options.forEachIndexed { optIdx, optionText ->
+                        val isThisSelected = selectedOption == optIdx
+                        val isThisCorrect = optIdx == pq.correctOptionIndex
+
+                        val (optBg, optBorder, optText) = when {
+                            !hasAnswered -> Triple(cardBg, border, textPrimary)
+                            isThisSelected && isCorrect -> Triple(green.copy(alpha = 0.16f), green, green)
+                            isThisSelected && !isCorrect -> Triple(red.copy(alpha = 0.16f), red, red)
+                            isThisCorrect -> Triple(green.copy(alpha = 0.12f), green.copy(alpha = 0.6f), green)
+                            else -> Triple(cardBg.copy(alpha = 0.5f), border.copy(alpha = 0.5f), textSecondary)
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(optBg)
+                                .border(1.dp, optBorder, RoundedCornerShape(8.dp))
+                                .clickable(enabled = !hasAnswered) {
+                                    selectedAnswers[pq.id] = optIdx
+                                }
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val optionLabel = ('A' + optIdx).toString()
+                            Text(
+                                text = "[$optionLabel]",
+                                style = TextStyle(fontFamily = LessonMono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = optText)
+                            )
+                            Text(
+                                text = optionText,
+                                style = TextStyle(fontFamily = LessonInter, fontSize = 12.5.sp, lineHeight = 17.sp, color = optText),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+
+                if (hasAnswered) {
+                    val explanationBg = if (isCorrect) green.copy(alpha = 0.1f) else LessonGold.copy(alpha = 0.1f)
+                    val explanationBorder = if (isCorrect) green.copy(alpha = 0.4f) else LessonGold.copy(alpha = 0.4f)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(explanationBg)
+                            .border(1.dp, explanationBorder, RoundedCornerShape(8.dp))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (isCorrect) "✓ Correct!" else "Explanation:",
+                            style = TextStyle(fontFamily = LessonInter, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = if (isCorrect) green else LessonGold)
+                        )
+                        Text(
+                            text = pq.explanation,
+                            style = TextStyle(fontFamily = LessonInter, fontSize = 12.sp, lineHeight = 17.sp, color = textPrimary)
+                        )
+                    }
                 }
             }
         }

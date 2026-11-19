@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
                     var currentCatalogueLessonId by rememberSaveable { mutableStateOf<String?>(null) }
                     var currentResourceTopic by rememberSaveable { mutableStateOf<String?>(null) }
                     var previousScreenBeforeResources by rememberSaveable { mutableIntStateOf(10) }
+                    var previousScreenBeforeLesson by rememberSaveable { mutableIntStateOf(10) }
                     var currentQuizLessonId by rememberSaveable { mutableIntStateOf(5) }
                     var aiQuery by rememberSaveable { mutableStateOf("") }
                     var previousScreenBeforeSettings by rememberSaveable { mutableIntStateOf(7) }
@@ -221,7 +222,10 @@ class MainActivity : ComponentActivity() {
                             }
                             screen == 15 -> {
                                 currentCatalogueLessonId = null
-                                screen = 11 // Lesson Screen -> Topic/Chapter Detail
+                                screen = previousScreenBeforeLesson
+                                if (previousScreenBeforeLesson == 10) {
+                                    coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                                }
                             }
                             screen == 13 -> screen = 11 // Quiz -> Chapter Detail
                             screen == 11 -> {
@@ -342,6 +346,7 @@ class MainActivity : ComponentActivity() {
                             onOpenCatalogueLesson = { subId, lesId ->
                                 currentSubtopicId = subId
                                 currentCatalogueLessonId = lesId
+                                previousScreenBeforeLesson = 11
                                 screen = 15
                             },
                             onOpenLearningResources = { topicName ->
@@ -355,10 +360,20 @@ class MainActivity : ComponentActivity() {
                             },
                             onVisualize = { slug ->
                                 if (slug != null) {
-                                    visualizerViewModel.selectAlgorithmBySlug(slug)
+                                    val handled = visualizerViewModel.selectAlgorithmBySlug(slug)
+                                    if (!handled) {
+                                        currentSubtopicId = slug
+                                        currentCatalogueLessonId = "${slug}_viz"
+                                        previousScreenBeforeLesson = 11
+                                        screen = 15
+                                    } else {
+                                        screen = 8
+                                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                                    }
+                                } else {
+                                    screen = 8
+                                    coroutineScope.launch { pagerState.animateScrollToPage(2) }
                                 }
-                                screen = 8
-                                coroutineScope.launch { pagerState.animateScrollToPage(2) }
                             },
                             onAskAi = { topicName ->
                                 aiQuery = "Explain ${topicName ?: "Searching Algorithms and Divide & Conquer"}"
@@ -408,15 +423,29 @@ class MainActivity : ComponentActivity() {
                             learningViewModel = learningViewModel,
                             onBack = {
                                 currentCatalogueLessonId = null
-                                screen = 11
+                                screen = previousScreenBeforeLesson
+                                if (previousScreenBeforeLesson == 10) {
+                                    coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                                }
                             },
                             onOpenLesson = { nextLessonId ->
                                 currentCatalogueLessonId = nextLessonId
                             },
                             onVisualize = { slug ->
-                                visualizerViewModel.selectAlgorithmBySlug(slug)
-                                screen = 8
-                                coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                                if (slug != null) {
+                                    val handled = visualizerViewModel.selectAlgorithmBySlug(slug)
+                                    if (!handled) {
+                                        currentSubtopicId = slug
+                                        currentCatalogueLessonId = "${slug}_viz"
+                                        screen = 15
+                                    } else {
+                                        screen = 8
+                                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                                    }
+                                } else {
+                                    screen = 8
+                                    coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                                }
                             },
                             onOpenQuiz = { quizId ->
                                 currentQuizLessonId = quizId
@@ -514,7 +543,9 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onSelectSubtopic = { subId ->
                                                 currentSubtopicId = subId
-                                                screen = 11
+                                                currentCatalogueLessonId = "${subId}_l1"
+                                                previousScreenBeforeLesson = 10
+                                                screen = 15
                                             },
                                             onOpenLearningResources = { topicName ->
                                                 previousScreenBeforeResources = 10

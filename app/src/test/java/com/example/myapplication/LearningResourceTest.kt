@@ -172,6 +172,14 @@ class LearningResourceTest {
             headings = listOf("Algorithm ", "Performance ( O ( log n ) )"),
             content = listOf("Runs in O ( log \u2061 n ) time ."),
             importantPoints = listOf("If A m < T , set L to m + 1 ."),
+            howItWorks = listOf("Compares target value to middle element ."),
+            stepByStep = listOf("Set L to 0 and R to n − 1 ."),
+            terminology = listOf("Binary search : search algorithm ."),
+            pseudocode = "function binary_search(A, n, T)   \n   return -1   ",
+            timeComplexity = "Worst : O ( log n ) | Best : O ( 1 )",
+            spaceComplexity = "O ( 1 )",
+            advantages = listOf("Fast search with O ( log n ) time ."),
+            limitations = listOf("Requires sorted array ."),
             sourceName = "Wikipedia",
             sourceUrl = "https://en.wikipedia.org/wiki/Binary_search"
         )
@@ -182,6 +190,96 @@ class LearningResourceTest {
         assertEquals(listOf("Algorithm", "Performance (O(log n))"), formatted.headings)
         assertEquals(listOf("Runs in O(log n) time."), formatted.content)
         assertEquals(listOf("If A[m] < T, set L to m + 1."), formatted.importantPoints)
+        assertEquals(listOf("Compares target value to middle element."), formatted.howItWorks)
+        assertEquals(listOf("Set L to 0 and R to n − 1."), formatted.stepByStep)
+        assertEquals(listOf("Binary search: search algorithm."), formatted.terminology)
+        assertEquals("function binary_search(A, n, T)\n   return -1", formatted.pseudocode)
+        assertEquals("Worst: O(log n) | Best: O(1)", formatted.timeComplexity)
+        assertEquals("O(1)", formatted.spaceComplexity)
+        assertEquals(listOf("Fast search with O(log n) time."), formatted.advantages)
+        assertEquals(listOf("Requires sorted array."), formatted.limitations)
         assertEquals("https://en.wikipedia.org/wiki/Binary_search", formatted.sourceUrl)
+    }
+
+    @Test
+    fun testGsonParsesFullStructuredLearningResourcePayload() {
+        val json = """
+            {
+              "success": true,
+              "message": "Learning resource retrieved successfully.",
+              "data": {
+                "cached": false,
+                "resource": {
+                  "id": 101,
+                  "topic_slug": "linear_search",
+                  "topic": "Linear Search",
+                  "category": "Searching",
+                  "title": "Linear search",
+                  "description": "Linear search is a method for finding an element within a list.",
+                  "headings": ["Algorithm", "Analysis"],
+                  "content": ["Sequential check of every element."],
+                  "important_points": ["Runs in O(n) worst-case time"],
+                  "how_it_works": ["Checks each element sequentially until match is found."],
+                  "step_by_step": ["Start from leftmost element", "Compare target with each element"],
+                  "terminology": ["Sequential search: Alternative name for linear search."],
+                  "pseudocode": "for each item in list:\n  if item == target: return index",
+                  "time_complexity": "Worst: O(n) | Best: O(1)",
+                  "space_complexity": "O(1)",
+                  "advantages": ["Simple to implement", "Does not require sorted data"],
+                  "limitations": ["Slow on large datasets with O(n) comparisons"],
+                  "source_name": "Wikipedia",
+                  "source_url": "https://en.wikipedia.org/wiki/Linear_search",
+                  "scraped_at": "2026-11-19T00:00:00Z",
+                  "from_cache": false
+                }
+              }
+            }
+        """.trimIndent()
+
+        val type = object : TypeToken<ApiResponse<LearningResourceData>>() {}.type
+        val parsed: ApiResponse<LearningResourceData> = Gson().fromJson(json, type)
+        assertTrue(parsed.success)
+        assertNotNull(parsed.data)
+        val res = parsed.data!!.resource
+        assertEquals("linear_search", res.topicSlug)
+        assertEquals("Linear Search", res.topic)
+        assertEquals(1, res.howItWorks.size)
+        assertEquals(2, res.stepByStep.size)
+        assertEquals("Worst: O(n) | Best: O(1)", res.timeComplexity)
+        assertEquals("O(1)", res.spaceComplexity)
+        assertEquals(2, res.advantages.size)
+        assertEquals(1, res.limitations.size)
+        assertTrue(res.pseudocode.contains("for each item"))
+    }
+
+    @Test
+    fun testVerificationTopicsMatching() {
+        // Verification requirement: Linear Search, Binary Search, Bubble Sort, Stack, Graph
+        val topics = LearningResourceRepository.defaultSupportedTopics
+        val linearSearch = topics.firstOrNull { it.slug == "linear_search" }
+        val binarySearch = topics.firstOrNull { it.slug == "binary_search" }
+        val bubbleSort = topics.firstOrNull { it.slug == "bubble_sort" }
+        val stack = topics.firstOrNull { it.slug == "stack" }
+        val graph = topics.firstOrNull { it.slug == "graph" }
+
+        assertNotNull(linearSearch)
+        assertEquals("Linear Search", linearSearch!!.name)
+        assertEquals("Searching", linearSearch.category)
+
+        assertNotNull(binarySearch)
+        assertEquals("Binary Search", binarySearch!!.name)
+        assertEquals("Searching", binarySearch.category)
+
+        assertNotNull(bubbleSort)
+        assertEquals("Bubble Sort", bubbleSort!!.name)
+        assertEquals("Sorting", bubbleSort.category)
+
+        assertNotNull(stack)
+        assertEquals("Stack", stack!!.name)
+        assertEquals("Data Structures", stack.category)
+
+        assertNotNull(graph)
+        assertEquals("Graph", graph!!.name)
+        assertEquals("Data Structures", graph.category)
     }
 }

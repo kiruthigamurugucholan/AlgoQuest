@@ -2,6 +2,8 @@ package com.example.myapplication.data.repository
 
 import android.content.Context
 import com.example.myapplication.data.model.response.AlgorithmDto
+import com.example.myapplication.data.model.response.CatalogueProgressData
+import com.example.myapplication.data.model.response.CompleteCatalogueLessonRequest
 import com.example.myapplication.data.model.response.LessonCompleteData
 import com.example.myapplication.data.model.response.TopicDetailData
 import com.example.myapplication.data.model.response.TopicItemDto
@@ -44,6 +46,33 @@ class LearningRepository(context: Context) {
                 Result.success(response.body()!!.data!!)
             } else {
                 Result.failure(Exception(response.body()?.message ?: "Failed to mark lesson complete"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun getCatalogueProgress(): Result<CatalogueProgressData> {
+        return try {
+            val response = api.getCatalogueProgress()
+            if (response.isSuccessful && response.body()?.success == true && response.body()?.data != null) {
+                Result.success(response.body()!!.data!!)
+            } else {
+                Result.failure(Exception(response.body()?.message ?: "Failed to load catalogue progress"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun completeCatalogueLesson(subtopicId: String, lessonId: String, xpReward: Int): Result<LessonCompleteData> {
+        return try {
+            val req = CompleteCatalogueLessonRequest(lessonId = lessonId, subtopicId = subtopicId, xpReward = xpReward)
+            val response = api.completeCatalogueLesson(req)
+            if (response.isSuccessful && response.body()?.success == true && response.body()?.data != null) {
+                Result.success(response.body()!!.data!!)
+            } else {
+                Result.failure(Exception(response.body()?.message ?: "Failed to mark catalogue lesson complete"))
             }
         } catch (e: Exception) {
             Result.failure(e)

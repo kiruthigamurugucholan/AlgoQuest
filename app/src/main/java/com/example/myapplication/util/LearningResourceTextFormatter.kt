@@ -87,13 +87,28 @@ object LearningResourceTextFormatter {
         return text
     }
 
+    fun cleanCode(raw: String): String {
+        if (raw.isBlank()) return ""
+        return raw.trim()
+            .lines()
+            .joinToString("\n") { it.trimEnd() }
+    }
+
     fun formatResource(resource: LearningResourceDto): LearningResourceDto {
         return resource.copy(
             title = cleanText(resource.title),
             description = cleanText(resource.description),
             headings = resource.headings.map { cleanText(it) }.filter { it.isNotBlank() },
             content = resource.content.map { cleanText(it) }.filter { it.isNotBlank() },
-            importantPoints = resource.importantPoints.map { cleanText(it) }.filter { it.isNotBlank() }
+            importantPoints = resource.importantPoints.map { cleanText(it) }.filter { it.isNotBlank() },
+            howItWorks = resource.howItWorks.map { cleanText(it) }.filter { it.isNotBlank() },
+            stepByStep = resource.stepByStep.map { cleanText(it) }.filter { it.isNotBlank() },
+            terminology = resource.terminology.map { cleanText(it) }.filter { it.isNotBlank() },
+            pseudocode = cleanCode(resource.pseudocode),
+            timeComplexity = cleanText(resource.timeComplexity),
+            spaceComplexity = cleanText(resource.spaceComplexity),
+            advantages = resource.advantages.map { cleanText(it) }.filter { it.isNotBlank() },
+            limitations = resource.limitations.map { cleanText(it) }.filter { it.isNotBlank() }
         )
     }
 }

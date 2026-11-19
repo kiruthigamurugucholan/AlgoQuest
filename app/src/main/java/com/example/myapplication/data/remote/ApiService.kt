@@ -11,6 +11,8 @@ import com.example.myapplication.data.model.response.AiHistoryData
 import com.example.myapplication.data.model.response.AlgorithmsData
 import com.example.myapplication.data.model.response.ApiResponse
 import com.example.myapplication.data.model.response.AuthData
+import com.example.myapplication.data.model.response.CatalogueProgressData
+import com.example.myapplication.data.model.response.CompleteCatalogueLessonRequest
 import com.example.myapplication.data.model.response.DashboardData
 import com.example.myapplication.data.model.response.LearningResourceData
 import com.example.myapplication.data.model.response.LearningResourceTopicsData
@@ -56,6 +58,12 @@ interface ApiService {
 
     @POST("lessons/{id}/complete")
     suspend fun completeLesson(@Path("id") lessonId: Int): Response<ApiResponse<LessonCompleteData>>
+
+    @GET("catalogue/progress")
+    suspend fun getCatalogueProgress(): Response<ApiResponse<CatalogueProgressData>>
+
+    @POST("catalogue/lessons/complete")
+    suspend fun completeCatalogueLesson(@Body req: CompleteCatalogueLessonRequest): Response<ApiResponse<LessonCompleteData>>
 
     @GET("algorithms")
     suspend fun getAlgorithms(): Response<ApiResponse<AlgorithmsData>>

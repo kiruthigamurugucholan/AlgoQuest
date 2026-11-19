@@ -341,8 +341,8 @@ fun ChapterDetailScreen(
                         subtopic.hasVisualizer && !subtopic.visualizerSlug.isNullOrEmpty()
                     } else true
 
-                    val vizBtnBg = if (canViz) Purple else CardBg
-                    val vizBtnBorder = if (canViz) Modifier else Modifier.border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                    val vizBtnBg = if (canViz) Purple else Cyan.copy(alpha = 0.18f)
+                    val vizBtnBorder = if (canViz) Modifier else Modifier.border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
 
                     Row(
                         modifier = Modifier
@@ -356,7 +356,7 @@ fun ChapterDetailScreen(
                                     if (canViz) {
                                         onVisualize(subtopic.visualizerSlug)
                                     } else {
-                                        onOpenCatalogueLesson(subtopic.id, "${subtopic.id}_viz")
+                                        onOpenCatalogueLesson(subtopic.id, "${subtopic.id}_l1")
                                     }
                                 } else {
                                     onVisualize(null)
@@ -365,12 +365,19 @@ fun ChapterDetailScreen(
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconCanvas(16.dp) { d -> drawEye(d) }
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = if (subtopic != null && !canViz) "Viz (Coming Soon)" else "Visualize Lab",
-                            style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = if (canViz) Color.White else TextMuted)
-                        )
+                        if (canViz) {
+                            IconCanvas(16.dp) { d -> drawEye(d) }
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Visualize Lab",
+                                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color.White)
+                            )
+                        } else {
+                            Text(
+                                text = "Study Lesson",
+                                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Cyan)
+                            )
+                        }
                     }
 
                     val aiSparkleColor = PurpleSoft

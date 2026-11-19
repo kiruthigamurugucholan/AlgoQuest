@@ -45,6 +45,17 @@ data class LessonSection(
 )
 
 /**
+ * Interactive practice question / quiz embedded directly within a lesson.
+ */
+data class LessonPracticeQuestion(
+    val id: String,
+    val question: String,
+    val options: List<String>,
+    val correctOptionIndex: Int,
+    val explanation: String
+)
+
+/**
  * Complete, structured educational content for a single DSA lesson.
  *
  * Uses stable string IDs linked to DsaSubtopic.id and optional integer IDs
@@ -59,11 +70,15 @@ data class DsaLessonContent(
     val subtitle: String,
     val estimatedMinutes: Int,
     val xpReward: Int,
+    val timeComplexity: String? = null,
+    val spaceComplexity: String? = null,
     val backendLessonId: Int? = null,
     val backendTopicId: Int? = null,
+    val learningObjectives: List<String> = emptyList(),
     val sections: List<LessonSection>,
     val codeExamples: List<LessonCodeBlock> = emptyList(),
-    val keyTakeaways: List<String> = emptyList()
+    val keyTakeaways: List<String> = emptyList(),
+    val practiceQuestions: List<LessonPracticeQuestion> = emptyList()
 )
 
 /**

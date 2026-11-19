@@ -116,6 +116,17 @@ data class LessonCompleteData(
     @SerializedName("streak") val streak: Int
 )
 
+data class CatalogueProgressData(
+    @SerializedName("completed_lesson_ids") val completedLessonIds: List<String> = emptyList(),
+    @SerializedName("total_completed") val totalCompleted: Int = 0
+)
+
+data class CompleteCatalogueLessonRequest(
+    @SerializedName("lesson_id") val lessonId: String,
+    @SerializedName("subtopic_id") val subtopicId: String,
+    @SerializedName("xp_reward") val xpReward: Int
+)
+
 // --- Quiz ---
 data class QuizData(
     @SerializedName("quiz") val quiz: QuizDetailsDto

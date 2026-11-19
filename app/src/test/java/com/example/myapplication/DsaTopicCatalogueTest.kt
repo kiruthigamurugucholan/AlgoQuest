@@ -87,11 +87,11 @@ class DsaTopicCatalogueTest {
         assertTrue(tp!!.hasVisualizer)
         assertEquals("two-pointers", tp.visualizerSlug)
 
-        // Topic without visualizer/quiz
+        // Subtopic with newly implemented universal visualizer (quiz remains optional)
         val dsIntro = DsaTopicCatalogueRepository.getSubtopicById("prog_intro_ds")
         assertNotNull("Intro to DS subtopic must exist", dsIntro)
-        assertFalse(dsIntro!!.hasVisualizer)
-        assertNull(dsIntro.visualizerSlug)
+        assertTrue(dsIntro!!.hasVisualizer)
+        assertEquals("prog_intro_ds", dsIntro.visualizerSlug)
         assertFalse(dsIntro.hasQuiz)
         assertNull(dsIntro.quizId)
     }

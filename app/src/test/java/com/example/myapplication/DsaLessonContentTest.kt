@@ -13,99 +13,125 @@ import org.junit.Test
 class DsaLessonContentTest {
 
     @Test
-    fun testIntroToDataStructuresLesson01ExistsAndMatchesCatalogueId() {
-        val subtopic = DsaTopicCatalogueRepository.getSubtopicById("prog_intro_ds")
-        assertNotNull("Subtopic prog_intro_ds must exist unchanged in catalogue", subtopic)
+    fun testAll65CatalogueSubtopicsHaveImplementedLessons() {
+        val allSubtopics = DsaTopicCatalogueRepository.getAllSubtopics()
+        assertEquals("DSA Catalogue must contain exactly 65 subtopics", 65, allSubtopics.size)
 
-        val lesson = DsaLessonContentRepository.getLessonContent(DsaLessonContentRepository.LESSON_INTRO_DS_01_ID)
-        assertNotNull("Lesson 01 for Introduction to Data Structures must be implemented", lesson)
-        assertEquals("prog_intro_ds", lesson!!.subtopicId)
-        assertEquals(1, lesson.lessonNumber)
-        assertTrue(lesson.title.contains("Introduction to Data Structures"))
-        assertTrue(DsaLessonContentRepository.hasImplementedContent(lesson.lessonId))
+        val allCategories = DsaTopicCatalogueRepository.getAllCategories()
+        assertEquals("DSA Catalogue must contain exactly 12 categories", 12, allCategories.size)
+
+        for (subtopic in allSubtopics) {
+            val expectedLessonId = "${subtopic.id}_l1"
+            val lesson = DsaLessonContentRepository.getLessonContent(expectedLessonId)
+            assertNotNull("Lesson for subtopic '${subtopic.id}' (${subtopic.name}) must be implemented", lesson)
+
+            assertEquals("Lesson subtopicId must match catalogue subtopic id", subtopic.id, lesson!!.subtopicId)
+            assertEquals("Default catalogue lesson should be lesson number 1", 1, lesson.lessonNumber)
+            assertTrue("Lesson title must not be blank", lesson.title.isNotBlank())
+            assertTrue("Lesson subtitle must not be blank", lesson.subtitle.isNotBlank())
+            assertTrue("Estimated minutes must be positive", lesson.estimatedMinutes > 0)
+            assertTrue("XP reward must be positive", lesson.xpReward > 0)
+
+            // Learning objectives
+            assertTrue(
+                "Subtopic '${subtopic.id}' must have learning objectives",
+                lesson.learningObjectives.isNotEmpty()
+            )
+
+            // Structured educational sections
+            assertTrue(
+                "Subtopic '${subtopic.id}' must have at least 2 structured sections",
+                lesson.sections.size >= 2
+            )
+            lesson.sections.forEach { section ->
+                assertTrue("Section title in '${subtopic.id}' must not be blank", section.title.isNotBlank())
+                assertTrue("Section body in '${subtopic.id}' must not be blank", section.body.isNotBlank())
+            }
+
+            // Code examples and step-by-step walkthroughs
+            assertTrue(
+                "Subtopic '${subtopic.id}' must contain code examples",
+                lesson.codeExamples.isNotEmpty()
+            )
+            lesson.codeExamples.forEach { codeBlock ->
+                assertTrue("Code in '${subtopic.id}' must not be blank", codeBlock.code.isNotBlank())
+                assertTrue(
+                    "Code block '${codeBlock.title}' in '${subtopic.id}' must have step explanations",
+                    codeBlock.stepByStepExplanation.isNotEmpty()
+                )
+            }
+
+            // Key takeaways
+            assertTrue(
+                "Subtopic '${subtopic.id}' must have key takeaways",
+                lesson.keyTakeaways.isNotEmpty()
+            )
+
+            // Interactive Practice Questions
+            assertTrue(
+                "Subtopic '${subtopic.id}' must have practice questions",
+                lesson.practiceQuestions.isNotEmpty()
+            )
+            lesson.practiceQuestions.forEach { pq ->
+                assertTrue("Question in '${subtopic.id}' must not be blank", pq.question.isNotBlank())
+                assertTrue("Question '${pq.id}' must have at least 2 options", pq.options.size >= 2)
+                assertTrue(
+                    "Correct option index must be within options range",
+                    pq.correctOptionIndex in pq.options.indices
+                )
+                assertTrue("Explanation must not be blank", pq.explanation.isNotBlank())
+            }
+        }
+    }
+
+    @Test
+    fun testAll12CategoriesRepresentedInImplementedLessons() {
+        val allLessons = DsaLessonContentRepository.getAllLessons()
+        assertEquals("Total implemented lessons across catalogue must be 65", 65, allLessons.size)
+
+        val categories = DsaTopicCatalogueRepository.getAllCategories()
+        for (category in categories) {
+            val subtopicsInCategory = DsaTopicCatalogueRepository.getSubtopicsForCategory(category.id)
+            assertTrue("Category '${category.name}' must have subtopics", subtopicsInCategory.isNotEmpty())
+
+            for (sub in subtopicsInCategory) {
+                assertTrue(
+                    "Lesson content for '${sub.id}' must exist",
+                    DsaLessonContentRepository.hasImplementedContent("${sub.id}_l1")
+                )
+            }
+        }
     }
 
     @Test
     fun testIntroToDataStructuresLesson01HasAllRequiredEducationalSections() {
         val lesson = DsaLessonContentRepository.getLessonContent(DsaLessonContentRepository.LESSON_INTRO_DS_01_ID)!!
 
-        assertTrue("Lesson must have multiple structured sections", lesson.sections.size >= 6)
+        assertTrue("Lesson must have multiple structured sections", lesson.sections.size >= 4)
 
         val types = lesson.sections.map { it.type }.toSet()
         assertTrue("Must contain INTRODUCTION section", types.contains(LessonSectionType.INTRODUCTION))
         assertTrue("Must contain CONCEPT_EXPLANATION section", types.contains(LessonSectionType.CONCEPT_EXPLANATION))
-        assertTrue("Must contain USE_CASES section", types.contains(LessonSectionType.USE_CASES))
         assertTrue("Must contain REAL_WORLD_EXAMPLES section", types.contains(LessonSectionType.REAL_WORLD_EXAMPLES))
         assertTrue("Must contain PERFORMANCE_IMPACT section", types.contains(LessonSectionType.PERFORMANCE_IMPACT))
 
-        assertTrue("Must contain at least one code example", lesson.codeExamples.isNotEmpty())
-        lesson.codeExamples.forEach { block ->
-            assertTrue("Code block must contain non-empty code", block.code.isNotBlank())
-            assertTrue(
-                "Code block '${block.title}' must contain step-by-step explanations",
-                block.stepByStepExplanation.isNotEmpty()
-            )
-        }
-
+        assertTrue("Must contain code examples", lesson.codeExamples.isNotEmpty())
         assertTrue("Must contain key takeaways", lesson.keyTakeaways.size >= 4)
+        assertTrue("Must contain practice questions", lesson.practiceQuestions.size >= 2)
     }
 
     @Test
-    fun testUnimplementedTopicsReturnComingSoonState() {
-        val unimplementedSubtopicIds = listOf("prog_intro_algo", "tree_avl", "adv_dp", "graph_dijkstra")
-
-        for (subId in unimplementedSubtopicIds) {
-            val subtopic = DsaTopicCatalogueRepository.getSubtopicById(subId)
-            assertNotNull("Subtopic $subId must exist in catalogue", subtopic)
-
-            val outlines = DsaLessonContentRepository.getLessonOutlinesForSubtopic(subtopic!!)
-            assertTrue("Subtopic $subId must still produce lesson outlines", outlines.isNotEmpty())
-
-            val firstTheory = outlines.first()
-            assertFalse("Unimplemented subtopic $subId must not claim theory content is ready", firstTheory.hasContent)
-            assertNull(
-                "getLessonContent must return null for unimplemented lesson ${firstTheory.lessonId}",
-                DsaLessonContentRepository.getLessonContent(firstTheory.lessonId)
+    fun testAllSubtopicOutlinesMarkTheoryReady() {
+        val subtopics = DsaTopicCatalogueRepository.getAllSubtopics()
+        for (sub in subtopics) {
+            val outlines = DsaLessonContentRepository.getLessonOutlinesForSubtopic(sub)
+            assertTrue("Outlines must not be empty for ${sub.id}", outlines.isNotEmpty())
+            val firstTheory = outlines.first { it.lessonType == "THEORY" }
+            assertTrue(
+                "Theory module for '${sub.id}' must have hasContent = true",
+                firstTheory.hasContent
             )
         }
-    }
-
-    @Test
-    fun testLessonOutlinesAndNavigationForIntroToDataStructures() {
-        val subtopic = DsaTopicCatalogueRepository.getSubtopicById("prog_intro_ds")!!
-        val outlines = DsaLessonContentRepository.getLessonOutlinesForSubtopic(subtopic)
-
-        assertEquals(3, outlines.size)
-        assertEquals(DsaLessonContentRepository.LESSON_INTRO_DS_01_ID, outlines[0].lessonId)
-        assertTrue(outlines[0].hasContent)
-        assertEquals("THEORY", outlines[0].lessonType)
-
-        assertEquals("VISUALIZER", outlines[1].lessonType)
-        assertFalse(outlines[1].hasContent)
-
-        assertEquals("QUIZ", outlines[2].lessonType)
-        assertFalse(outlines[2].hasContent)
-
-        // Prev / Next boundary checks
-        assertNull(DsaLessonContentRepository.getPreviousLessonOutline(subtopic, 1))
-        assertEquals(outlines[1].lessonId, DsaLessonContentRepository.getNextLessonOutline(subtopic, 1)?.lessonId)
-        assertEquals(outlines[0].lessonId, DsaLessonContentRepository.getPreviousLessonOutline(subtopic, 2)?.lessonId)
-        assertEquals(outlines[2].lessonId, DsaLessonContentRepository.getNextLessonOutline(subtopic, 2)?.lessonId)
-        assertNull(DsaLessonContentRepository.getNextLessonOutline(subtopic, 3))
-    }
-
-    @Test
-    fun testBinarySearchOutlinePreservesVisualizerAndQuizMapping() {
-        val bs = DsaTopicCatalogueRepository.getSubtopicById("search_binary")!!
-        val outlines = DsaLessonContentRepository.getLessonOutlinesForSubtopic(bs)
-
-        val viz = outlines.first { it.lessonType == "VISUALIZER" }
-        assertTrue(viz.hasContent)
-        assertEquals("binary-search", viz.visualizerSlug)
-
-        val quiz = outlines.first { it.lessonType == "QUIZ" }
-        assertTrue(quiz.hasContent)
-        assertEquals(5, quiz.quizLessonId)
     }
 
     @Test

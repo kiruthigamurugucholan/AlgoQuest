@@ -1,8 +1,6 @@
 package com.example.myapplication
 
-import android.content.Intent
-import android.net.Uri
-import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +27,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,7 +47,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -95,7 +93,6 @@ fun LearningResourcesScreen(
     onAskAi: (query: String) -> Unit = {},
     onSelectTab: (Int) -> Unit = {}
 ) {
-    val context = LocalContext.current
     val scrollState = rememberScrollState()
 
     val topics by viewModel?.topics?.collectAsState()
@@ -110,6 +107,14 @@ fun LearningResourcesScreen(
         ?: remember { mutableStateOf(null) }
     val uiState by viewModel?.uiState?.collectAsState()
         ?: remember { mutableStateOf<LearningResourceUiState>(LearningResourceUiState.Idle) }
+
+    // Toggle for dedicated in-app learning detail screen
+    var isDetailView by remember(selectedTopicSlug) { mutableStateOf(false) }
+
+    // Intercept hardware back button when inside detail view to collapse back to overview
+    BackHandler(enabled = isDetailView) {
+        isDetailView = false
+    }
 
     LaunchedEffect(Unit) {
         viewModel?.loadTopics()
@@ -128,7 +133,6 @@ fun LearningResourcesScreen(
 
     val bg = ResBg
     val cardBg = ResCardBg
-    val activeCardBg = ResActiveCardBg
     val fieldBg = ResFieldBg
     val border = ResBorder
     val textPrimary = ResTextPrimary
@@ -137,8 +141,6 @@ fun LearningResourcesScreen(
     val cyan = ResCyan
     val purple = ResPurple
     val purpleSoft = ResPurpleSoft
-    val green = ResGreen
-    val gold = ResGold
 
     Column(
         modifier = Modifier
@@ -156,180 +158,250 @@ fun LearningResourcesScreen(
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
             // 1. Top Header Bar
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            if (isDetailView && uiState is LearningResourceUiState.Success) {
+                val successResource = (uiState as LearningResourceUiState.Success).resource
                 Row(
-                    modifier = Modifier.weight(1f, fill = false),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(cardBg)
+                                .border(1.dp, border, CircleShape)
+                                .clickable { isDetailView = false },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ResIconCanvas(16.dp) { d -> drawResChevronLeft(d, textPrimary) }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                text = successResource.topic.ifBlank { successResource.title },
+                                style = TextStyle(
+                                    fontFamily = ResPoppins,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 19.sp,
+                                    color = textPrimary
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "${successResource.category.ifBlank { "DSA" }} · In-App Learning Material",
+                                style = TextStyle(
+                                    fontFamily = ResInter,
+                                    fontSize = 11.5.sp,
+                                    color = textSecondary
+                                )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(cardBg)
-                            .border(1.dp, border, CircleShape)
-                            .clickable(onClick = onBack),
-                        contentAlignment = Alignment.Center
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(purpleSoft.copy(alpha = 0.16f))
+                            .border(1.dp, purpleSoft.copy(alpha = 0.45f), RoundedCornerShape(8.dp))
+                            .clickable { isDetailView = false }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
                     ) {
-                        ResIconCanvas(16.dp) { d -> drawResChevronLeft(d, textPrimary) }
-                    }
-                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
                         Text(
-                            text = "Learning Resources",
+                            text = "COLLAPSE",
                             style = TextStyle(
-                                fontFamily = ResPoppins,
+                                fontFamily = ResMono,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 19.sp,
-                                color = textPrimary
-                            ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = "Curated DSA Web Articles · ${topics.size} Topics",
-                            style = TextStyle(
-                                fontFamily = ResInter,
-                                fontSize = 11.5.sp,
-                                color = textSecondary
+                                fontSize = 10.sp,
+                                color = purpleSoft
                             )
                         )
                     }
                 }
-                Spacer(Modifier.width(8.dp))
-                if (uiState is LearningResourceUiState.Success) {
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(cyan.copy(alpha = 0.14f))
-                            .border(1.dp, cyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-                            .clickable { viewModel?.refreshCurrent() }
-                            .padding(horizontal = 10.dp, vertical = 6.dp)
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f, fill = false),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(cardBg)
+                                .border(1.dp, border, CircleShape)
+                                .clickable(onClick = onBack),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            ResIconCanvas(16.dp) { d -> drawResChevronLeft(d, textPrimary) }
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                text = "Learning Resources",
+                                style = TextStyle(
+                                    fontFamily = ResPoppins,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 19.sp,
+                                    color = textPrimary
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = "Curated DSA Web Articles · ${topics.size} Topics",
+                                style = TextStyle(
+                                    fontFamily = ResInter,
+                                    fontSize = 11.5.sp,
+                                    color = textSecondary
+                                )
+                            )
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    if (uiState is LearningResourceUiState.Success) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(cyan.copy(alpha = 0.14f))
+                                .border(1.dp, cyan.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                .clickable { viewModel?.refreshCurrent() }
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "REFRESH",
+                                style = TextStyle(
+                                    fontFamily = ResMono,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.sp,
+                                    color = cyan
+                                )
+                            )
+                        }
+                    } else {
+                        ResBadge("WEB SCRAPER", purple.copy(alpha = 0.16f), purpleSoft)
+                    }
+                }
+            }
+
+            // Only show search & topic filters on the overview screen
+            if (!isDetailView) {
+                // 2. Search Bar for DSA Topics
+                val searchShape = RoundedCornerShape(14.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .clip(searchShape)
+                        .background(fieldBg)
+                        .border(1.dp, border, searchShape)
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    ResIconCanvas(16.dp) { d -> drawResSearch(d, textMuted) }
+                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = "Search DSA topics (e.g. Binary Search, Bubble Sort, Stack)...",
+                                style = TextStyle(
+                                    fontFamily = ResInter,
+                                    fontSize = 13.sp,
+                                    color = textMuted
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { viewModel?.updateSearchQuery(it) },
+                            singleLine = true,
+                            cursorBrush = SolidColor(cyan),
+                            textStyle = TextStyle(
+                                fontFamily = ResInter,
+                                fontSize = 13.5.sp,
+                                color = textPrimary
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = { viewModel?.submitSearch() }),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    if (searchQuery.isNotEmpty()) {
                         Text(
-                            text = "REFRESH",
+                            text = "CLEAR",
                             style = TextStyle(
                                 fontFamily = ResMono,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
                                 color = cyan
-                            )
-                        )
-                    }
-                } else {
-                    ResBadge("WEB SCRAPER", purple.copy(alpha = 0.16f), purpleSoft)
-                }
-            }
-
-            // 2. Search Bar for DSA Topics
-            val searchShape = RoundedCornerShape(14.dp)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .clip(searchShape)
-                    .background(fieldBg)
-                    .border(1.dp, border, searchShape)
-                    .padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                ResIconCanvas(16.dp) { d -> drawResSearch(d, textMuted) }
-                Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                    if (searchQuery.isEmpty()) {
-                        Text(
-                            text = "Search DSA topics (e.g. Binary Search, BFS, Stack)...",
-                            style = TextStyle(
-                                fontFamily = ResInter,
-                                fontSize = 13.sp,
-                                color = textMuted
                             ),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            modifier = Modifier.clickable { viewModel?.updateSearchQuery("") }
                         )
                     }
-                    BasicTextField(
-                        value = searchQuery,
-                        onValueChange = { viewModel?.updateSearchQuery(it) },
-                        singleLine = true,
-                        cursorBrush = SolidColor(cyan),
-                        textStyle = TextStyle(
-                            fontFamily = ResInter,
-                            fontSize = 13.5.sp,
-                            color = textPrimary
-                        ),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { viewModel?.submitSearch() }),
-                        modifier = Modifier.fillMaxWidth()
-                    )
                 }
-                if (searchQuery.isNotEmpty()) {
-                    Text(
-                        text = "CLEAR",
-                        style = TextStyle(
-                            fontFamily = ResMono,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
-                            color = cyan
-                        ),
-                        modifier = Modifier.clickable { viewModel?.updateSearchQuery("") }
-                    )
-                }
-            }
 
-            // 3. Category Filter Row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val allSelected = selectedCategory == null
-                CategoryFilterChip(
-                    label = "All (${topics.size})",
-                    selected = allSelected,
-                    accentColor = cyan,
-                    onClick = { viewModel?.selectCategory(null) }
-                )
-                categories.forEach { cat ->
-                    val count = topics.count { it.category.equals(cat, ignoreCase = true) }
+                // 3. Category Filter Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val allSelected = selectedCategory == null
                     CategoryFilterChip(
-                        label = "$cat ($count)",
-                        selected = selectedCategory.equals(cat, ignoreCase = true),
-                        accentColor = purpleSoft,
-                        onClick = { viewModel?.selectCategory(cat) }
+                        label = "All (${topics.size})",
+                        selected = allSelected,
+                        accentColor = cyan,
+                        onClick = { viewModel?.selectCategory(null) }
                     )
-                }
-            }
-
-            // 4. Selectable DSA Topic Chips
-            if (filteredTopics.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        text = "Select a Topic",
-                        style = TextStyle(
-                            fontFamily = ResPoppins,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            color = textPrimary
+                    categories.forEach { cat ->
+                        val count = topics.count { it.category.equals(cat, ignoreCase = true) }
+                        CategoryFilterChip(
+                            label = "$cat ($count)",
+                            selected = selectedCategory.equals(cat, ignoreCase = true),
+                            accentColor = purpleSoft,
+                            onClick = { viewModel?.selectCategory(cat) }
                         )
-                    )
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        filteredTopics.forEach { topic ->
-                            val isSelected = selectedTopicSlug == topic.slug
-                            TopicPillChip(
-                                topic = topic,
-                                selected = isSelected,
-                                onClick = { viewModel?.fetchResource(topic.slug) }
+                    }
+                }
+
+                // 4. Selectable DSA Topic Chips
+                if (filteredTopics.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            text = "Select a Topic",
+                            style = TextStyle(
+                                fontFamily = ResPoppins,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp,
+                                color = textPrimary
                             )
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            filteredTopics.forEach { topic ->
+                                val isSelected = selectedTopicSlug == topic.slug
+                                TopicPillChip(
+                                    topic = topic,
+                                    selected = isSelected,
+                                    onClick = { viewModel?.fetchResource(topic.slug) }
+                                )
+                            }
                         }
                     }
                 }
@@ -349,33 +421,27 @@ fun LearningResourcesScreen(
                 }
 
                 is LearningResourceUiState.Success -> {
-                    ResourceDetailContent(
-                        resource = state.resource,
-                        cached = state.cached,
-                        onReadMore = { url ->
-                            if (LearningResourceRepository.isSafeExternalUrl(url)) {
-                                try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    context.startActivity(intent)
-                                } catch (_: Exception) {
-                                    Toast.makeText(
-                                        context,
-                                        "No browser app available to open this link.",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Invalid or unsupported external article URL.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
+                    if (isDetailView) {
+                        // Dedicated In-App Learning Detail Screen
+                        ResourceLearningDetailView(
+                            resource = state.resource,
+                            cached = state.cached,
+                            onCollapse = { isDetailView = false },
+                            onAskAi = {
+                                onAskAi("Explain ${state.resource.topic} in depth with step-by-step examples and time complexity.")
                             }
-                        },
-                        onAskAi = {
-                            onAskAi("Summarize key interview concepts and time complexity for ${state.resource.topic}.")
-                        }
-                    )
+                        )
+                    } else {
+                        // Overview Card with in-app Read More navigation
+                        ResourceDetailContent(
+                            resource = state.resource,
+                            cached = state.cached,
+                            onReadMore = { isDetailView = true },
+                            onAskAi = {
+                                onAskAi("Summarize key interview concepts and time complexity for ${state.resource.topic}.")
+                            }
+                        )
+                    }
                 }
 
                 is LearningResourceUiState.Empty -> {
@@ -534,11 +600,16 @@ private fun ResourceLoadingCard(topicLabel: String) {
     }
 }
 
+/**
+ * Overview card displayed on the main Learning Resources screen.
+ * Clicking "Read More" switches to the dedicated in-app learning detail screen.
+ * It NEVER opens Wikipedia or an external browser.
+ */
 @Composable
 private fun ResourceDetailContent(
     resource: LearningResourceDto,
     cached: Boolean,
-    onReadMore: (String) -> Unit,
+    onReadMore: () -> Unit,
     onAskAi: () -> Unit
 ) {
     val cardBg = ResCardBg
@@ -553,7 +624,6 @@ private fun ResourceDetailContent(
     val green = ResGreen
     val gold = ResGold
 
-    // Clean punctuation, normalize whitespace, and format mathematical expressions client-side
     val cleanResource = remember(resource) {
         LearningResourceTextFormatter.formatResource(resource)
     }
@@ -623,7 +693,7 @@ private fun ResourceDetailContent(
             )
         )
 
-        // Action Buttons: Read More + Ask AI Ally
+        // Action Buttons: In-App "Read More" + "Ask AI Ally"
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -634,7 +704,7 @@ private fun ResourceDetailContent(
                     .height(44.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Brush.horizontalGradient(listOf(purple, cyan.copy(alpha = 0.85f))))
-                    .clickable { onReadMore(cleanResource.sourceUrl) },
+                    .clickable(onClick = onReadMore),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -648,7 +718,7 @@ private fun ResourceDetailContent(
                     )
                 )
                 Spacer(Modifier.width(6.dp))
-                ResIconCanvas(14.dp) { d -> drawResExternalArrow(d, Color.White) }
+                ResIconCanvas(14.dp) { d -> drawResChevronRight(d, Color.White) }
             }
 
             Box(
@@ -761,7 +831,7 @@ private fun ResourceDetailContent(
         }
     }
 
-    // Section Headings Card
+    // Section Headings Card (Outline)
     if (cleanResource.headings.isNotEmpty()) {
         val hShape = RoundedCornerShape(18.dp)
         Column(
@@ -795,6 +865,7 @@ private fun ResourceDetailContent(
                             .clip(RoundedCornerShape(9.dp))
                             .background(activeCardBg)
                             .border(1.dp, border, RoundedCornerShape(9.dp))
+                            .clickable(onClick = onReadMore)
                             .padding(horizontal = 12.dp, vertical = 7.dp)
                     ) {
                         Text(
@@ -812,7 +883,7 @@ private fun ResourceDetailContent(
         }
     }
 
-    // Detailed Reading Content Card
+    // Overview Educational Explanation Card
     if (cleanResource.content.isNotEmpty()) {
         val visibleParagraphs = if (expandedContent) cleanResource.content else cleanResource.content.take(3)
         val cShape = RoundedCornerShape(18.dp)
@@ -889,7 +960,7 @@ private fun ResourceDetailContent(
                 }
             }
 
-            // Source attribution footer block
+            // Source attribution footer block (Display-only reference information; does NOT open external browser)
             if (cleanResource.sourceUrl.isNotBlank()) {
                 Column(
                     modifier = Modifier
@@ -897,12 +968,11 @@ private fun ResourceDetailContent(
                         .clip(RoundedCornerShape(12.dp))
                         .background(activeCardBg.copy(alpha = 0.65f))
                         .border(1.dp, border.copy(alpha = 0.7f), RoundedCornerShape(12.dp))
-                        .clickable { onReadMore(cleanResource.sourceUrl) }
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     Text(
-                        text = "SOURCE · ${cleanResource.sourceName.ifBlank { "Educational Source" }.uppercase()}",
+                        text = "REFERENCE SOURCE · ${cleanResource.sourceName.ifBlank { "Educational Source" }.uppercase()}",
                         style = TextStyle(
                             fontFamily = ResMono,
                             fontWeight = FontWeight.Bold,
@@ -922,6 +992,778 @@ private fun ResourceDetailContent(
                         overflow = TextOverflow.Ellipsis
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Dedicated In-App Learning Detail Screen.
+ * Displays all structured sections supported by the retrieved content inside AlgoQuest:
+ * - Topic title
+ * - Introduction and detailed explanation
+ * - How the concept works
+ * - Step-by-step explanation
+ * - Important terminology and keywords
+ * - Algorithm or pseudocode (if applicable)
+ * - Time complexity (best, average, worst where applicable)
+ * - Space complexity
+ * - Advantages
+ * - Limitations
+ * - Important concepts and key takeaways
+ * - Source reference (kept for attribution, but never opens external browser)
+ */
+@Composable
+private fun ResourceLearningDetailView(
+    resource: LearningResourceDto,
+    cached: Boolean,
+    onCollapse: () -> Unit,
+    onAskAi: () -> Unit
+) {
+    val cardBg = ResCardBg
+    val activeCardBg = ResActiveCardBg
+    val fieldBg = ResFieldBg
+    val border = ResBorder
+    val textPrimary = ResTextPrimary
+    val textSecondary = ResTextSecondary
+    val textMuted = ResTextMuted
+    val cyan = ResCyan
+    val purple = ResPurple
+    val purpleSoft = ResPurpleSoft
+    val green = ResGreen
+    val gold = ResGold
+
+    val cleanResource = remember(resource) {
+        LearningResourceTextFormatter.formatResource(resource)
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        // 1. Topic Hero Header Card
+        val heroShape = RoundedCornerShape(20.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(heroShape)
+                .background(activeCardBg)
+                .border(
+                    1.dp,
+                    Brush.horizontalGradient(listOf(purple.copy(alpha = 0.7f), cyan.copy(alpha = 0.7f))),
+                    heroShape
+                )
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ResBadge(
+                        cleanResource.category.ifBlank { "DSA" }.uppercase(),
+                        purple.copy(alpha = 0.16f),
+                        purpleSoft
+                    )
+                    ResBadge(
+                        cleanResource.sourceName.ifBlank { "CURATED RESOURCE" }.uppercase(),
+                        cyan.copy(alpha = 0.14f),
+                        cyan
+                    )
+                }
+                ResBadge(
+                    if (cached) "SAVED" else "LIVE",
+                    if (cached) gold.copy(alpha = 0.14f) else green.copy(alpha = 0.16f),
+                    if (cached) gold else green
+                )
+            }
+
+            Text(
+                text = cleanResource.title.ifBlank { cleanResource.topic },
+                style = TextStyle(
+                    fontFamily = ResPoppins,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 22.sp,
+                    lineHeight = 29.sp,
+                    color = textPrimary
+                )
+            )
+
+            Text(
+                text = "Comprehensive In-App Study Guide",
+                style = TextStyle(
+                    fontFamily = ResInter,
+                    fontSize = 12.sp,
+                    color = textMuted
+                )
+            )
+        }
+
+        // 2. Introduction & Detailed Explanation Card
+        val introShape = RoundedCornerShape(18.dp)
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(introShape)
+                .background(cardBg)
+                .border(1.dp, border, introShape)
+                .padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            ResBadge("INTRODUCTION & DETAILED EXPLANATION", cyan.copy(alpha = 0.14f), cyan)
+            Text(
+                text = "Overview & Core Concept",
+                style = TextStyle(
+                    fontFamily = ResPoppins,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.5.sp,
+                    color = textPrimary
+                )
+            )
+            Text(
+                text = buildFormattedResourceText(
+                    text = cleanResource.description,
+                    mathColor = cyan
+                ),
+                style = TextStyle(
+                    fontFamily = ResInter,
+                    fontSize = 14.sp,
+                    lineHeight = 23.sp,
+                    color = textSecondary
+                )
+            )
+        }
+
+        // 3. Time & Space Complexity Card (Only if supported by retrieved content)
+        val hasTimeComplexity = cleanResource.timeComplexity.isNotBlank()
+        val hasSpaceComplexity = cleanResource.spaceComplexity.isNotBlank()
+        if (hasTimeComplexity || hasSpaceComplexity) {
+            val compShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(compShape)
+                    .background(cardBg)
+                    .border(1.dp, border, compShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ResBadge("COMPLEXITY ANALYSIS", cyan.copy(alpha = 0.15f), cyan)
+                Text(
+                    text = "Asymptotic Performance",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+
+                if (hasTimeComplexity) {
+                    val boxShape = RoundedCornerShape(12.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(boxShape)
+                            .background(activeCardBg)
+                            .border(1.dp, cyan.copy(alpha = 0.35f), boxShape)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "TIME COMPLEXITY",
+                            style = TextStyle(
+                                fontFamily = ResMono,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.5.sp,
+                                color = cyan
+                            )
+                        )
+                        Text(
+                            text = buildFormattedResourceText(cleanResource.timeComplexity, cyan),
+                            style = TextStyle(
+                                fontFamily = ResMono,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.5.sp,
+                                lineHeight = 20.sp,
+                                color = textPrimary
+                            )
+                        )
+                    }
+                }
+
+                if (hasSpaceComplexity) {
+                    val boxShape = RoundedCornerShape(12.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(boxShape)
+                            .background(activeCardBg)
+                            .border(1.dp, purpleSoft.copy(alpha = 0.35f), boxShape)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = "SPACE COMPLEXITY",
+                            style = TextStyle(
+                                fontFamily = ResMono,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.5.sp,
+                                color = purpleSoft
+                            )
+                        )
+                        Text(
+                            text = buildFormattedResourceText(cleanResource.spaceComplexity, purpleSoft),
+                            style = TextStyle(
+                                fontFamily = ResMono,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.5.sp,
+                                lineHeight = 20.sp,
+                                color = textPrimary
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // 4. How the Concept Works Card (Only if supported by retrieved content)
+        if (cleanResource.howItWorks.isNotEmpty()) {
+            val howShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(howShape)
+                    .background(cardBg)
+                    .border(1.dp, border, howShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                ResBadge("HOW THE CONCEPT WORKS", purple.copy(alpha = 0.16f), purpleSoft)
+                Text(
+                    text = "Mechanism & Inner Workings",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.howItWorks.forEach { paragraph ->
+                    Text(
+                        text = buildFormattedResourceText(paragraph, cyan),
+                        style = TextStyle(
+                            fontFamily = ResInter,
+                            fontSize = 14.sp,
+                            lineHeight = 23.sp,
+                            color = textSecondary
+                        )
+                    )
+                }
+            }
+        }
+
+        // 5. Step-by-Step Explanation Card (Only if supported by retrieved content)
+        if (cleanResource.stepByStep.isNotEmpty()) {
+            val stepShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(stepShape)
+                    .background(cardBg)
+                    .border(1.dp, border, stepShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                ResBadge("STEP-BY-STEP EXPLANATION", cyan.copy(alpha = 0.14f), cyan)
+                Text(
+                    text = "Execution Walkthrough",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.stepByStep.forEachIndexed { index, stepText ->
+                    val itemShape = RoundedCornerShape(12.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(itemShape)
+                            .background(activeCardBg)
+                            .border(1.dp, border, itemShape)
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(cyan.copy(alpha = 0.16f))
+                                .border(1.dp, cyan.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = (index + 1).toString(),
+                                style = TextStyle(
+                                    fontFamily = ResMono,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = cyan
+                                )
+                            )
+                        }
+                        Text(
+                            text = buildFormattedResourceText(stepText, cyan),
+                            style = TextStyle(
+                                fontFamily = ResInter,
+                                fontSize = 13.5.sp,
+                                lineHeight = 21.sp,
+                                color = textPrimary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 6. Algorithm or Pseudocode Card (Only if supported by retrieved content)
+        if (cleanResource.pseudocode.isNotBlank()) {
+            val codeShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(codeShape)
+                    .background(cardBg)
+                    .border(1.dp, border, codeShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ResBadge("ALGORITHM / PSEUDOCODE", purple.copy(alpha = 0.16f), purpleSoft)
+                Text(
+                    text = "Algorithm Logic",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                val codeBoxShape = RoundedCornerShape(12.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(codeBoxShape)
+                        .background(fieldBg)
+                        .border(1.dp, border, codeBoxShape)
+                        .padding(14.dp)
+                ) {
+                    Text(
+                        text = cleanResource.pseudocode,
+                        style = TextStyle(
+                            fontFamily = ResMono,
+                            fontSize = 12.5.sp,
+                            lineHeight = 19.sp,
+                            color = cyan
+                        )
+                    )
+                }
+            }
+        }
+
+        // 7. Important Terminology & Keywords Card (Only if supported by retrieved content)
+        if (cleanResource.terminology.isNotEmpty()) {
+            val termShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(termShape)
+                    .background(cardBg)
+                    .border(1.dp, border, termShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ResBadge("KEY TERMINOLOGY", gold.copy(alpha = 0.14f), gold)
+                Text(
+                    text = "Important Concepts & Terms",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.terminology.forEach { termItem ->
+                    val termParts = termItem.split(":", limit = 2)
+                    val itemShape = RoundedCornerShape(12.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(itemShape)
+                            .background(activeCardBg)
+                            .border(1.dp, border, itemShape)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = termParts[0].trim(),
+                            style = TextStyle(
+                                fontFamily = ResPoppins,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                color = cyan
+                            )
+                        )
+                        if (termParts.size > 1) {
+                            Text(
+                                text = buildFormattedResourceText(termParts[1].trim(), cyan),
+                                style = TextStyle(
+                                    fontFamily = ResInter,
+                                    fontSize = 13.sp,
+                                    lineHeight = 20.sp,
+                                    color = textSecondary
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // 8. Advantages Card (Only if supported by retrieved content)
+        if (cleanResource.advantages.isNotEmpty()) {
+            val advShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(advShape)
+                    .background(cardBg)
+                    .border(1.dp, border, advShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ResBadge("ADVANTAGES", green.copy(alpha = 0.16f), green)
+                Text(
+                    text = "Key Strengths & Benefits",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.advantages.forEach { item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(green)
+                        )
+                        Text(
+                            text = buildFormattedResourceText(item, cyan),
+                            style = TextStyle(
+                                fontFamily = ResInter,
+                                fontSize = 13.5.sp,
+                                lineHeight = 21.sp,
+                                color = textPrimary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 9. Limitations Card (Only if supported by retrieved content)
+        if (cleanResource.limitations.isNotEmpty()) {
+            val limShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(limShape)
+                    .background(cardBg)
+                    .border(1.dp, border, limShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                ResBadge("LIMITATIONS", gold.copy(alpha = 0.16f), gold)
+                Text(
+                    text = "Constraints & Trade-offs",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.limitations.forEach { item ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(gold)
+                        )
+                        Text(
+                            text = buildFormattedResourceText(item, cyan),
+                            style = TextStyle(
+                                fontFamily = ResInter,
+                                fontSize = 13.5.sp,
+                                lineHeight = 21.sp,
+                                color = textPrimary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 10. Detailed Study Notes (Full Content Paragraphs)
+        if (cleanResource.content.isNotEmpty()) {
+            val contShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(contShape)
+                    .background(cardBg)
+                    .border(1.dp, border, contShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ResBadge("STUDY NOTES", cyan.copy(alpha = 0.14f), cyan)
+                    Text(
+                        text = "${cleanResource.content.size} Sections",
+                        style = TextStyle(
+                            fontFamily = ResMono,
+                            fontSize = 10.5.sp,
+                            color = textMuted
+                        )
+                    )
+                }
+                Text(
+                    text = "Detailed Educational Content",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.content.forEachIndexed { idx, paragraph ->
+                    Text(
+                        text = buildFormattedResourceText(paragraph, cyan),
+                        style = TextStyle(
+                            fontFamily = ResInter,
+                            fontSize = 14.sp,
+                            lineHeight = 23.sp,
+                            color = textSecondary
+                        )
+                    )
+                    if (idx < cleanResource.content.size - 1) {
+                        HorizontalDivider(
+                            color = border.copy(alpha = 0.6f),
+                            thickness = 0.8.dp,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 11. Important Concepts & Key Takeaways Card (The existing Important Concepts section)
+        if (cleanResource.importantPoints.isNotEmpty()) {
+            val ptsShape = RoundedCornerShape(18.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(ptsShape)
+                    .background(cardBg)
+                    .border(1.dp, border, ptsShape)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ResBadge("KEY TAKEAWAYS", gold.copy(alpha = 0.14f), gold)
+                    Text(
+                        text = "${cleanResource.importantPoints.size} Key Takeaways",
+                        style = TextStyle(
+                            fontFamily = ResMono,
+                            fontSize = 10.5.sp,
+                            color = textMuted
+                        )
+                    )
+                }
+                Text(
+                    text = "Important Concepts to Remember",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
+                        color = textPrimary
+                    )
+                )
+                cleanResource.importantPoints.forEachIndexed { index, point ->
+                    val itemShape = RoundedCornerShape(12.dp)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(itemShape)
+                            .background(activeCardBg)
+                            .border(1.dp, border, itemShape)
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .padding(top = 1.dp)
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .background(cyan.copy(alpha = 0.16f))
+                                .border(1.dp, cyan.copy(alpha = 0.4f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = (index + 1).toString(),
+                                style = TextStyle(
+                                    fontFamily = ResMono,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.5.sp,
+                                    color = cyan
+                                )
+                            )
+                        }
+                        Text(
+                            text = buildFormattedResourceText(point, cyan),
+                            style = TextStyle(
+                                fontFamily = ResInter,
+                                fontSize = 13.5.sp,
+                                lineHeight = 21.5.sp,
+                                color = textPrimary
+                            ),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+        }
+
+        // 12. Optional Source Attribution Card (Display-only reference information; NEVER opens external browser)
+        if (cleanResource.sourceUrl.isNotBlank()) {
+            val srcShape = RoundedCornerShape(14.dp)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(srcShape)
+                    .background(cardBg)
+                    .border(1.dp, border, srcShape)
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "ACADEMIC ATTRIBUTION · ${cleanResource.sourceName.ifBlank { "Educational Source" }.uppercase()}",
+                    style = TextStyle(
+                        fontFamily = ResMono,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 10.5.sp,
+                        color = purpleSoft
+                    )
+                )
+                Text(
+                    text = cleanResource.sourceUrl,
+                    style = TextStyle(
+                        fontFamily = ResMono,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
+                        color = textMuted
+                    ),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Reference URL preserved for attribution · Full learning content is served directly inside AlgoQuest.",
+                    style = TextStyle(
+                        fontFamily = ResInter,
+                        fontSize = 10.5.sp,
+                        color = textMuted
+                    )
+                )
+            }
+        }
+
+        // 13. Bottom Action Bar: Clear Collapse/Back Option + Ask AI Ally
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(cardBg)
+                    .border(1.dp, cyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .clickable(onClick = onCollapse),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ResIconCanvas(14.dp) { d -> drawResChevronUp(d, cyan) }
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Collapse to Overview",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp,
+                        color = cyan
+                    )
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.horizontalGradient(listOf(purple, cyan.copy(alpha = 0.85f))))
+                    .clickable(onClick = onAskAi),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "Ask AI Ally",
+                    style = TextStyle(
+                        fontFamily = ResPoppins,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.5.sp,
+                        color = Color.White
+                    )
+                )
             }
         }
     }
@@ -981,7 +1823,7 @@ private fun ResourceIdleCard(
             )
         )
         Text(
-            text = "Search above or tap any topic chip to retrieve structured explanations, key concepts, article outlines, and verified external reading links.",
+            text = "Search above or tap any topic chip to retrieve structured explanations, key concepts, pseudocode, complexity breakdowns, and step-by-step notes inside AlgoQuest.",
             style = TextStyle(
                 fontFamily = ResInter,
                 fontSize = 13.sp,
@@ -1069,7 +1911,7 @@ private fun ResourceEmptyCard(
             )
         )
         Text(
-            text = "Try searching for one of the 20 supported topics such as Binary Search, Bubble Sort, Stack, Queue, BFS, or Dynamic Programming.",
+            text = "Try searching for one of the 20 supported topics such as Linear Search, Binary Search, Bubble Sort, Stack, Queue, BFS, or Graph.",
             style = TextStyle(
                 fontFamily = ResInter,
                 fontSize = 13.sp,
@@ -1204,6 +2046,18 @@ private fun DrawScope.drawResChevronLeft(d: Float, color: Color) {
     drawLine(color, Offset(5f * d, 10f * d), Offset(11f * d, 16f * d), w, StrokeCap.Round)
 }
 
+private fun DrawScope.drawResChevronRight(d: Float, color: Color) {
+    val w = 1.8f * d
+    drawLine(color, Offset(5f * d, 4f * d), Offset(11f * d, 10f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(11f * d, 10f * d), Offset(5f * d, 16f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawResChevronUp(d: Float, color: Color) {
+    val w = 1.8f * d
+    drawLine(color, Offset(4f * d, 10f * d), Offset(8f * d, 5f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(8f * d, 5f * d), Offset(12f * d, 10f * d), w, StrokeCap.Round)
+}
+
 private fun DrawScope.drawResSearch(d: Float, color: Color) {
     drawCircle(
         color = color,
@@ -1212,13 +2066,6 @@ private fun DrawScope.drawResSearch(d: Float, color: Color) {
         style = Stroke(width = 1.5f * d, cap = StrokeCap.Round, join = StrokeJoin.Round)
     )
     drawLine(color, Offset(10.5f * d, 10.5f * d), Offset(14.5f * d, 14.5f * d), 1.8f * d, StrokeCap.Round)
-}
-
-private fun DrawScope.drawResExternalArrow(d: Float, color: Color) {
-    val w = 1.6f * d
-    drawLine(color, Offset(4f * d, 10f * d), Offset(10.5f * d, 3.5f * d), w, StrokeCap.Round)
-    drawLine(color, Offset(6f * d, 3.5f * d), Offset(10.5f * d, 3.5f * d), w, StrokeCap.Round)
-    drawLine(color, Offset(10.5f * d, 3.5f * d), Offset(10.5f * d, 8f * d), w, StrokeCap.Round)
 }
 
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
