@@ -27,6 +27,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.lifecycle.ViewModelProvider
 import com.example.myapplication.data.remote.TokenManager
+import com.example.myapplication.data.repository.AdventureRoadmapRepository
+import com.example.myapplication.data.repository.DsaLessonContentRepository
 import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.ui.theme.AppThemeMode
 import com.example.myapplication.reminder.ReminderPreferences
@@ -227,14 +229,24 @@ class MainActivity : ComponentActivity() {
                                     coroutineScope.launch { pagerState.animateScrollToPage(1) }
                                 }
                             }
-                            screen == 13 -> screen = 11 // Quiz -> Chapter Detail
+                            screen == 13 -> {
+                                if (previousScreenBeforeLesson == 15) {
+                                    screen = 15
+                                } else {
+                                    screen = 11
+                                }
+                            }
                             screen == 11 -> {
                                 currentSubtopicId = null
                                 currentCatalogueLessonId = null
                                 screen = 10 // Chapter Detail -> Quest Map
                             }
                             screen in listOf(7, 10, 8, 9, 12) -> {
-                                if (pagerState.currentPage != 0) {
+                                if (screen == 8 && previousScreenBeforeLesson == 15) {
+                                    screen = 15
+                                } else if (screen == 8 && previousScreenBeforeLesson == 11) {
+                                    screen = 11
+                                } else if (pagerState.currentPage != 0) {
                                     coroutineScope.launch {
                                         pagerState.animateScrollToPage(0)
                                     }
@@ -337,9 +349,10 @@ class MainActivity : ComponentActivity() {
                                 screen = 10
                             },
                             onStartLesson = { slug ->
-                                if (slug != null) {
-                                    visualizerViewModel.selectAlgorithmBySlug(slug)
-                                }
+                                val targetSlug = slug ?: AdventureRoadmapRepository.getPrimaryVisualizerSlugForChapter(currentChapterId)
+                                currentSubtopicId = targetSlug
+                                visualizerViewModel.selectTopic(targetSlug)
+                                previousScreenBeforeLesson = 11
                                 screen = 8
                                 coroutineScope.launch { pagerState.animateScrollToPage(2) }
                             },
@@ -356,24 +369,16 @@ class MainActivity : ComponentActivity() {
                             },
                             onOpenQuiz = { lessonId ->
                                 currentQuizLessonId = lessonId
+                                previousScreenBeforeLesson = 11
                                 screen = 13
                             },
                             onVisualize = { slug ->
-                                if (slug != null) {
-                                    val handled = visualizerViewModel.selectAlgorithmBySlug(slug)
-                                    if (!handled) {
-                                        currentSubtopicId = slug
-                                        currentCatalogueLessonId = "${slug}_viz"
-                                        previousScreenBeforeLesson = 11
-                                        screen = 15
-                                    } else {
-                                        screen = 8
-                                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
-                                    }
-                                } else {
-                                    screen = 8
-                                    coroutineScope.launch { pagerState.animateScrollToPage(2) }
-                                }
+                                val targetSlug = slug ?: AdventureRoadmapRepository.getPrimaryVisualizerSlugForChapter(currentChapterId)
+                                currentSubtopicId = targetSlug
+                                visualizerViewModel.selectTopic(targetSlug)
+                                previousScreenBeforeLesson = 11
+                                screen = 8
+                                coroutineScope.launch { pagerState.animateScrollToPage(2) }
                             },
                             onAskAi = { topicName ->
                                 aiQuery = "Explain ${topicName ?: "Searching Algorithms and Divide & Conquer"}"
@@ -385,10 +390,20 @@ class MainActivity : ComponentActivity() {
                         13 -> QuizScreen(
                             lessonId = currentQuizLessonId,
                             quizViewModel = quizViewModel,
-                            onBack = { screen = 11 },
+                            onBack = {
+                                if (previousScreenBeforeLesson == 15) {
+                                    screen = 15
+                                } else {
+                                    screen = 11
+                                }
+                            },
                             onQuizPassed = {
                                 learningViewModel.loadTopicDetail(currentChapterId)
-                                screen = 11
+                                if (previousScreenBeforeLesson == 15) {
+                                    screen = 15
+                                } else {
+                                    screen = 11
+                                }
                             },
                             onSelectTab = ::onSelectTab
                         )
@@ -418,8 +433,8 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                         15 -> LessonScreen(
-                            subtopicId = currentSubtopicId ?: "prog_intro_ds",
-                            lessonId = currentCatalogueLessonId ?: "prog_intro_ds_l1",
+                            subtopicId = currentSubtopicId ?: AdventureRoadmapRepository.getPrimarySubtopicIdForChapter(currentChapterId),
+                            lessonId = currentCatalogueLessonId ?: "${currentSubtopicId ?: AdventureRoadmapRepository.getPrimarySubtopicIdForChapter(currentChapterId)}_l1",
                             learningViewModel = learningViewModel,
                             onBack = {
                                 currentCatalogueLessonId = null
@@ -429,26 +444,21 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onOpenLesson = { nextLessonId ->
+                                val subId = DsaLessonContentRepository.getLessonContent(nextLessonId)?.subtopicId
+                                    ?: if (nextLessonId.contains("_l")) nextLessonId.substringBeforeLast("_l") else nextLessonId
+                                currentSubtopicId = subId
                                 currentCatalogueLessonId = nextLessonId
                             },
                             onVisualize = { slug ->
-                                if (slug != null) {
-                                    val handled = visualizerViewModel.selectAlgorithmBySlug(slug)
-                                    if (!handled) {
-                                        currentSubtopicId = slug
-                                        currentCatalogueLessonId = "${slug}_viz"
-                                        screen = 15
-                                    } else {
-                                        screen = 8
-                                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
-                                    }
-                                } else {
-                                    screen = 8
-                                    coroutineScope.launch { pagerState.animateScrollToPage(2) }
-                                }
+                                currentSubtopicId = slug
+                                visualizerViewModel.selectTopic(slug)
+                                previousScreenBeforeLesson = 15
+                                screen = 8
+                                coroutineScope.launch { pagerState.animateScrollToPage(2) }
                             },
                             onOpenQuiz = { quizId ->
                                 currentQuizLessonId = quizId
+                                previousScreenBeforeLesson = 15
                                 screen = 13
                             },
                             onAskAi = { query ->
@@ -557,9 +567,16 @@ class MainActivity : ComponentActivity() {
                                         )
                                         2 -> AlgorithmVisualizerScreen(
                                             viewModel = visualizerViewModel,
+                                            subtopicId = currentSubtopicId ?: AdventureRoadmapRepository.getPrimaryVisualizerSlugForChapter(currentChapterId),
                                             onBack = {
-                                                screen = 7
-                                                coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                                                if (previousScreenBeforeLesson == 15) {
+                                                    screen = 15
+                                                } else if (previousScreenBeforeLesson == 11) {
+                                                    screen = 11
+                                                } else {
+                                                    screen = 7
+                                                    coroutineScope.launch { pagerState.animateScrollToPage(0) }
+                                                }
                                             },
                                             onAskAi = { query ->
                                                 aiQuery = query

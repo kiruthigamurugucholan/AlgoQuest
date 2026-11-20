@@ -1,5 +1,7 @@
 package com.example.myapplication.ui.visualizer.components
 
+import android.graphics.Paint
+import android.graphics.Typeface
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -27,9 +29,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +46,11 @@ import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.model.visualizer.DsaVisualizerStep
 import com.example.myapplication.data.model.visualizer.DsaVizType
 import com.example.myapplication.ui.theme.AlgoTheme
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.hypot
+import kotlin.math.sin
 
 // --- Color Palette Helpers ---
 private val TextPrimary: Color @Composable get() = AlgoTheme.colors.textPrimary
@@ -394,6 +406,25 @@ fun QueueVisualizerView(step: DsaVisualizerStep) {
 }
 
 /**
+ * Helper to clip edge connecting lines to node/vertex circular boundaries,
+ * preventing edges from crossing into node circles or cutting through centered text.
+ */
+private fun clipLineToCircles(
+    startX: Float, startY: Float, startRadius: Float,
+    endX: Float, endY: Float, endRadius: Float
+): Pair<Offset, Offset>? {
+    val dx = endX - startX
+    val dy = endY - startY
+    val dist = hypot(dx, dy)
+    if (dist <= startRadius + endRadius) return null
+    val ux = dx / dist
+    val uy = dy / dist
+    val p1 = Offset(startX + ux * startRadius, startY + uy * startRadius)
+    val p2 = Offset(endX - ux * endRadius, endY - uy * endRadius)
+    return Pair(p1, p2)
+}
+
+/**
  * 5. Tree View (Canvas rendering of binary tree nodes & branches)
  */
 @Composable
@@ -401,8 +432,16 @@ fun TreeVisualizerView(step: DsaVisualizerStep) {
     val cyan = Cyan
     val purple = Purple
     val green = Green
+    val gold = Gold
     val cardBg = CardBg
+    val codeBg = CodeBg
     val borderCol = BorderColor
+    val textPrimary = TextPrimary
+
+    val maxDepth = step.treeNodes.maxOfOrNull { it.depth } ?: 2
+    val nodeCount = step.treeNodes.size
+    val canvasHeight = (180 + (maxDepth - 2).coerceAtLeast(0) * 45).dp
+    val needsScroll = nodeCount > 7 || maxDepth > 2
 
     Column(
         modifier = Modifier
@@ -413,15 +452,25 @@ fun TreeVisualizerView(step: DsaVisualizerStep) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(160.dp)
+                .height(canvasHeight)
                 .clip(RoundedCornerShape(12.dp))
-                .background(CodeBg)
+                .background(codeBg)
                 .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
         ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val nodeMap = step.treeNodes.associateBy { it.id }
+            val contentModifier = if (needsScroll) {
+                Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .width(480.dp)
+                    .fillMaxHeight()
+            } else {
+                Modifier.fillMaxSize()
+            }
 
-                // Draw edge lines first
+            Canvas(modifier = contentModifier) {
+                val nodeMap = step.treeNodes.associateBy { it.id }
+                val nodeRadius = 16.dp.toPx()
+
+                // 1. Draw edge lines first (clipped cleanly to node circle boundaries)
                 step.treeNodes.forEach { node ->
                     val startX = node.xFraction * size.width
                     val startY = node.yFraction * size.height
@@ -430,13 +479,15 @@ fun TreeVisualizerView(step: DsaVisualizerStep) {
                         nodeMap[leftId]?.let { leftNode ->
                             val endX = leftNode.xFraction * size.width
                             val endY = leftNode.yFraction * size.height
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.25f),
-                                start = Offset(startX, startY),
-                                end = Offset(endX, endY),
-                                strokeWidth = 2.dp.toPx(),
-                                cap = StrokeCap.Round
-                            )
+                            clipLineToCircles(startX, startY, nodeRadius, endX, endY, nodeRadius)?.let { (p1, p2) ->
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.35f),
+                                    start = p1,
+                                    end = p2,
+                                    strokeWidth = 2.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
                         }
                     }
 
@@ -444,53 +495,62 @@ fun TreeVisualizerView(step: DsaVisualizerStep) {
                         nodeMap[rightId]?.let { rightNode ->
                             val endX = rightNode.xFraction * size.width
                             val endY = rightNode.yFraction * size.height
-                            drawLine(
-                                color = Color.White.copy(alpha = 0.25f),
-                                start = Offset(startX, startY),
-                                end = Offset(endX, endY),
-                                strokeWidth = 2.dp.toPx(),
-                                cap = StrokeCap.Round
-                            )
+                            clipLineToCircles(startX, startY, nodeRadius, endX, endY, nodeRadius)?.let { (p1, p2) ->
+                                drawLine(
+                                    color = Color.White.copy(alpha = 0.35f),
+                                    start = p1,
+                                    end = p2,
+                                    strokeWidth = 2.dp.toPx(),
+                                    cap = StrokeCap.Round
+                                )
+                            }
                         }
                     }
                 }
 
-                // Draw node circles
+                // 2. Draw node circles and centered text labels directly on Canvas
                 step.treeNodes.forEach { node ->
                     val cx = node.xFraction * size.width
                     val cy = node.yFraction * size.height
-                    val radius = 16.dp.toPx()
                     val isActive = node.id == step.activeTreeNodeId || node.isHighlighted
 
+                    // Solid circular node fill
                     drawCircle(
                         color = if (isActive) cyan else if (node.isVisited) green else cardBg,
-                        radius = radius,
+                        radius = nodeRadius,
                         center = Offset(cx, cy)
                     )
+                    // Crisp circular border
                     drawCircle(
                         color = if (isActive) Color.White else if (node.isVisited) green else borderCol,
-                        radius = radius,
+                        radius = nodeRadius,
                         center = Offset(cx, cy),
                         style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                     )
-                }
-            }
 
-            // Overlay node text labels
-            step.treeNodes.forEach { node ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            start = (node.xFraction * 280).dp.coerceAtLeast(0.dp),
-                            top = (node.yFraction * 120).dp.coerceAtLeast(0.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = node.value,
-                        style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary)
-                    )
+                    // Node value label optically and mathematically centered inside the circle
+                    val textPaint = Paint().apply {
+                        isAntiAlias = true
+                        textAlign = Paint.Align.CENTER
+                        textSize = 12.sp.toPx()
+                        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                        color = (if (isActive || node.isVisited) Color(0xFF0F1220) else textPrimary).toArgb()
+                    }
+                    val baselineY = cy - (textPaint.descent() + textPaint.ascent()) / 2f
+                    drawContext.canvas.nativeCanvas.drawText(node.value, cx, baselineY, textPaint)
+
+                    // Optional node annotation (e.g., AVL Balance Factor "BF = +1") placed above node
+                    node.annotation?.let { ann ->
+                        val annPaint = Paint().apply {
+                            isAntiAlias = true
+                            textAlign = Paint.Align.CENTER
+                            textSize = 9.sp.toPx()
+                            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                            color = gold.toArgb()
+                        }
+                        val annY = cy - nodeRadius - 5.dp.toPx()
+                        drawContext.canvas.nativeCanvas.drawText(ann, cx, annY, annPaint)
+                    }
                 }
             }
         }
@@ -509,7 +569,7 @@ fun TreeVisualizerView(step: DsaVisualizerStep) {
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(CardBg)
+                            .background(cardBg)
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(text = item, style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 10.sp, color = Green))
@@ -529,7 +589,10 @@ fun GraphVisualizerView(step: DsaVisualizerStep) {
     val green = Green
     val gold = Gold
     val cardBg = CardBg
+    val codeBg = CodeBg
     val borderCol = BorderColor
+    val textPrimary = TextPrimary
+    val textSecondary = TextSecondary
 
     Column(
         modifier = Modifier
@@ -540,73 +603,164 @@ fun GraphVisualizerView(step: DsaVisualizerStep) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(170.dp)
+                .height(190.dp)
                 .clip(RoundedCornerShape(12.dp))
-                .background(CodeBg)
+                .background(codeBg)
                 .border(1.dp, BorderColor, RoundedCornerShape(12.dp))
         ) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val vMap = step.graphVertices.associateBy { it.id }
+                val vertexRadius = 17.dp.toPx()
 
-                // Draw edges
+                // 1. Draw edges first (clipped cleanly to vertex boundaries)
                 step.graphEdges.forEach { edge ->
                     val fromV = vMap[edge.fromId]
                     val toV = vMap[edge.toId]
                     if (fromV != null && toV != null) {
-                        val start = Offset(fromV.xFraction * size.width, fromV.yFraction * size.height)
-                        val end = Offset(toV.xFraction * size.width, toV.yFraction * size.height)
+                        val startX = fromV.xFraction * size.width
+                        val startY = fromV.yFraction * size.height
+                        val endX = toV.xFraction * size.width
+                        val endY = toV.yFraction * size.height
                         val isEdgeActive = edge.isHighlighted || edge.isMst
+                        val edgeColor = if (edge.isMst) gold else if (edge.isHighlighted) cyan else Color.White.copy(alpha = 0.25f)
 
-                        drawLine(
-                            color = if (edge.isMst) gold else if (edge.isHighlighted) cyan else Color.White.copy(alpha = 0.2f),
-                            start = start,
-                            end = end,
-                            strokeWidth = if (isEdgeActive) 3.dp.toPx() else 1.5.dp.toPx(),
-                            cap = StrokeCap.Round
-                        )
+                        clipLineToCircles(startX, startY, vertexRadius, endX, endY, vertexRadius)?.let { (p1, p2) ->
+                            drawLine(
+                                color = edgeColor,
+                                start = p1,
+                                end = p2,
+                                strokeWidth = if (isEdgeActive) 3.dp.toPx() else 1.5.dp.toPx(),
+                                cap = StrokeCap.Round
+                            )
+
+                            // Arrowhead for directed graphs
+                            if (edge.isDirected) {
+                                val arrowLen = 8.dp.toPx()
+                                val arrowAngle = PI / 6
+                                val angle = atan2((p2.y - p1.y).toDouble(), (p2.x - p1.x).toDouble())
+                                val x3 = p2.x - arrowLen * cos(angle - arrowAngle).toFloat()
+                                val y3 = p2.y - arrowLen * sin(angle - arrowAngle).toFloat()
+                                val x4 = p2.x - arrowLen * cos(angle + arrowAngle).toFloat()
+                                val y4 = p2.y - arrowLen * sin(angle + arrowAngle).toFloat()
+
+                                val path = Path().apply {
+                                    moveTo(p2.x, p2.y)
+                                    lineTo(x3, y3)
+                                    lineTo(x4, y4)
+                                    close()
+                                }
+                                drawPath(path, color = edgeColor)
+                            }
+
+                            // Edge weight badge
+                            edge.weight?.let { w ->
+                                val mx = (startX + endX) / 2f
+                                val my = (startY + endY) / 2f
+                                val dx = endX - startX
+                                val dy = endY - startY
+                                val dist = hypot(dx, dy)
+                                if (dist > 0f) {
+                                    val nx = -dy / dist
+                                    val ny = dx / dist
+                                    val wx = mx + nx * 10.dp.toPx()
+                                    val wy = my + ny * 10.dp.toPx()
+                                    val badgeRadius = 9.dp.toPx()
+
+                                    drawCircle(
+                                        color = codeBg,
+                                        radius = badgeRadius,
+                                        center = Offset(wx, wy)
+                                    )
+                                    drawCircle(
+                                        color = if (isEdgeActive) edgeColor else borderCol,
+                                        radius = badgeRadius,
+                                        center = Offset(wx, wy),
+                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                                    )
+
+                                    val weightPaint = Paint().apply {
+                                        isAntiAlias = true
+                                        textAlign = Paint.Align.CENTER
+                                        textSize = 9.sp.toPx()
+                                        typeface = Typeface.MONOSPACE
+                                        color = (if (isEdgeActive) edgeColor else textSecondary).toArgb()
+                                    }
+                                    val weightBaselineY = wy - (weightPaint.descent() + weightPaint.ascent()) / 2f
+                                    drawContext.canvas.nativeCanvas.drawText(w.toString(), wx, weightBaselineY, weightPaint)
+                                }
+                            }
+                        }
                     }
                 }
 
-                // Draw vertices
+                // 2. Draw vertices and centered labels
                 step.graphVertices.forEach { v ->
-                    val center = Offset(v.xFraction * size.width, v.yFraction * size.height)
-                    val radius = 16.dp.toPx()
+                    val cx = v.xFraction * size.width
+                    val cy = v.yFraction * size.height
                     val isActive = v.id == step.activeVertexId || v.isHighlighted
                     val isVisited = v.id in step.visitedVertexIds || v.isVisited
 
+                    // Vertex circle fill
                     drawCircle(
                         color = if (isActive) cyan else if (isVisited) green else cardBg,
-                        radius = radius,
-                        center = center
+                        radius = vertexRadius,
+                        center = Offset(cx, cy)
                     )
+                    // Vertex circle border
                     drawCircle(
                         color = if (isActive) Color.White else if (isVisited) green else borderCol,
-                        radius = radius,
-                        center = center,
+                        radius = vertexRadius,
+                        center = Offset(cx, cy),
                         style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                     )
-                }
-            }
 
-            // Vertex labels
-            step.graphVertices.forEach { v ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            start = (v.xFraction * 270).dp.coerceAtLeast(0.dp),
-                            top = (v.yFraction * 130).dp.coerceAtLeast(0.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = v.label,
-                            style = TextStyle(fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 11.sp, color = TextPrimary)
-                        )
-                        v.distance?.let { d ->
-                            Text(text = "d:$d", style = TextStyle(fontFamily = Mono, fontSize = 8.sp, color = Cyan))
+                    // Vertex label centered exactly in circle
+                    val labelPaint = Paint().apply {
+                        isAntiAlias = true
+                        textAlign = Paint.Align.CENTER
+                        textSize = 12.sp.toPx()
+                        typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                        color = (if (isActive || isVisited) Color(0xFF0F1220) else textPrimary).toArgb()
+                    }
+                    val labelBaselineY = cy - (labelPaint.descent() + labelPaint.ascent()) / 2f
+                    drawContext.canvas.nativeCanvas.drawText(v.label, cx, labelBaselineY, labelPaint)
+
+                    // Distance badge positioned below circle without crowding vertex label
+                    v.distance?.let { d ->
+                        val badgeCenterY = cy + vertexRadius + 11.dp.toPx()
+                        val distText = "d:$d"
+                        val distPaint = Paint().apply {
+                            isAntiAlias = true
+                            textAlign = Paint.Align.CENTER
+                            textSize = 8.5.sp.toPx()
+                            typeface = Typeface.create(Typeface.MONOSPACE, Typeface.BOLD)
+                            color = (if (isActive) cyan else textSecondary).toArgb()
                         }
+
+                        val badgeWidth = 30.dp.toPx()
+                        val badgeHeight = 14.dp.toPx()
+                        val rect = Rect(
+                            left = cx - badgeWidth / 2f,
+                            top = badgeCenterY - badgeHeight / 2f,
+                            right = cx + badgeWidth / 2f,
+                            bottom = badgeCenterY + badgeHeight / 2f
+                        )
+                        drawRoundRect(
+                            color = cardBg,
+                            topLeft = rect.topLeft,
+                            size = rect.size,
+                            cornerRadius = CornerRadius(4.dp.toPx())
+                        )
+                        drawRoundRect(
+                            color = if (isActive) cyan else borderCol,
+                            topLeft = rect.topLeft,
+                            size = rect.size,
+                            cornerRadius = CornerRadius(4.dp.toPx()),
+                            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
+                        )
+
+                        val distBaselineY = badgeCenterY - (distPaint.descent() + distPaint.ascent()) / 2f
+                        drawContext.canvas.nativeCanvas.drawText(distText, cx, distBaselineY, distPaint)
                     }
                 }
             }

@@ -48,6 +48,32 @@ object SortingLessons {
                         "Average Case O(N^2): Random array.",
                         "Best Case O(N): Already sorted array with early exit flag."
                     )
+                ),
+                LessonSection(
+                    id = "bubble_analogy",
+                    type = LessonSectionType.REAL_WORLD_EXAMPLES,
+                    title = "Lining Up Students by Height",
+                    body = "Imagine a teacher arranging an unsorted row of students by height. Walking from left to right, whenever a taller student is in front of a shorter one, they swap places. By the time the teacher reaches the end of the line, the tallest student is guaranteed to be at the very back.",
+                    bulletPoints = listOf(
+                        "Pass 1: Largest element bubbles to position n - 1.",
+                        "Pass 2: 2nd largest element bubbles to position n - 2.",
+                        "The unsorted prefix shrinks by 1 after each pass."
+                    )
+                ),
+                LessonSection(
+                    id = "bubble_steps",
+                    type = LessonSectionType.ALGORITHM_STEPS,
+                    title = "Step-by-Step Algorithm Execution",
+                    body = "Bubble Sort systematically bubbles elements using nested pass loops:",
+                    bulletPoints = listOf(
+                        "Start outer loop i from 0 to n - 2, representing passes.",
+                        "Initialize boolean swapped = false before starting adjacent checks.",
+                        "Run inner loop j from 0 up to n - 2 - i (tail is already in place).",
+                        "Compare adjacent pair array[j] and array[j + 1].",
+                        "If array[j] > array[j + 1], swap array[j] and array[j + 1], then set swapped = true.",
+                        "After inner loop finishes, check if swapped is false; if so, break early.",
+                        "Repeat until all passes complete or array is verified sorted."
+                    )
                 )
             ),
             codeExamples = listOf(

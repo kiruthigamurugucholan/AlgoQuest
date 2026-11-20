@@ -17,6 +17,7 @@ import com.example.myapplication.data.model.request.VisualizerAiRequest
 import com.example.myapplication.data.model.response.VisualizerAiData
 import com.example.myapplication.data.repository.LearningRepository
 import com.example.myapplication.data.repository.VisualizerAiRepository
+import com.example.myapplication.data.visualizer.DsaVisualizationRegistry
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,6 +44,9 @@ class VisualizerViewModel(application: Application) : AndroidViewModel(applicati
 
     private val _selectedAlg = MutableStateFlow(0) // 0: Binary Search, 1: Bubble Sort, 2: Two Pointers
     val selectedAlg: StateFlow<Int> = _selectedAlg.asStateFlow()
+
+    private val _selectedSubtopicId = MutableStateFlow<String?>("search_binary")
+    val selectedSubtopicId: StateFlow<String?> = _selectedSubtopicId.asStateFlow()
 
     private val _currentLanguage = MutableStateFlow(CodeLanguage.KOTLIN)
     val currentLanguage: StateFlow<CodeLanguage> = _currentLanguage.asStateFlow()
@@ -175,19 +179,61 @@ class VisualizerViewModel(application: Application) : AndroidViewModel(applicati
         if (_selectedAlg.value == idx) return
         _selectedAlg.value = idx
         _isInputEditorOpen.value = false
+        val slug = when (idx) {
+            0 -> "search_binary"
+            1 -> "sort_bubble"
+            else -> "array_two_pointers"
+        }
+        _selectedSubtopicId.value = slug
         loadTemplateForCurrentSelection()
         updateInputTextFields()
         runAndVisualizeCode()
     }
 
+    fun selectTopic(subtopicId: String): Boolean {
+        val clean = subtopicId.trim()
+        _selectedSubtopicId.value = clean
+        when (clean.lowercase()) {
+            "search_binary", "binary-search" -> {
+                if (_selectedAlg.value != 0) {
+                    _selectedAlg.value = 0
+                    _isInputEditorOpen.value = false
+                    loadTemplateForCurrentSelection()
+                    updateInputTextFields()
+                    runAndVisualizeCode()
+                }
+            }
+            "sort_bubble", "bubble-sort" -> {
+                if (_selectedAlg.value != 1) {
+                    _selectedAlg.value = 1
+                    _isInputEditorOpen.value = false
+                    loadTemplateForCurrentSelection()
+                    updateInputTextFields()
+                    runAndVisualizeCode()
+                }
+            }
+            "array_two_pointers", "two-pointers" -> {
+                if (_selectedAlg.value != 2) {
+                    _selectedAlg.value = 2
+                    _isInputEditorOpen.value = false
+                    loadTemplateForCurrentSelection()
+                    updateInputTextFields()
+                    runAndVisualizeCode()
+                }
+            }
+        }
+        return DsaVisualizationRegistry.hasScenario(clean)
+    }
+
     fun selectAlgorithmBySlug(slug: String): Boolean {
-        val targetSlug = slug.trim().lowercase()
-        val index = algMetadata.indexOfFirst { it.slug.lowercase() == targetSlug }
+        val clean = slug.trim()
+        selectTopic(clean)
+        val index = algMetadata.indexOfFirst { it.slug.equals(clean, ignoreCase = true) }
         if (index != -1) {
             selectAlgorithm(index)
             return true
         }
-        return false
+        return DsaVisualizationRegistry.hasScenario(clean)
     }
 
     fun setLanguage(language: CodeLanguage) {

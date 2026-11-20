@@ -88,9 +88,41 @@ fun DsaUniversalVisualizer(
     isLabCompleted: Boolean = false,
     modifier: Modifier = Modifier
 ) {
-    val scenario: DsaVisualizerScenario = remember(subtopicId) {
+    val scenario: DsaVisualizerScenario? = remember(subtopicId) {
         DsaVisualizationRegistry.getScenarioForSubtopic(subtopicId)
-            ?: DsaVisualizationRegistry.getAllScenarios().first()
+    }
+
+    if (scenario == null) {
+        Column(
+            modifier = modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .background(CardBg)
+                .border(1.dp, BorderColor, RoundedCornerShape(16.dp))
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = "Visualization Unavailable",
+                style = TextStyle(
+                    fontFamily = Poppins,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    color = TextPrimary
+                )
+            )
+            Text(
+                text = "No interactive visualization is currently mapped for topic '$subtopicId'. This topic focuses on theoretical foundations and problem-solving patterns.",
+                style = TextStyle(
+                    fontFamily = Inter,
+                    fontSize = 12.5.sp,
+                    color = TextSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            )
+        }
+        return
     }
 
     var customInputText by remember(subtopicId) { mutableStateOf(scenario.defaultInput) }

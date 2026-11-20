@@ -47,6 +47,30 @@ object SearchingLessons {
                     bulletPoints = listOf(
                         "Halves the number of conditional branch evaluations per loop step."
                     )
+                ),
+                LessonSection(
+                    id = "lin_search_analogy",
+                    type = LessonSectionType.REAL_WORLD_EXAMPLES,
+                    title = "Finding an Exam in an Unsorted Pile",
+                    body = "Imagine a professor looking for a student's paper in an unsorted stack of 100 exams. There is no shortcut: they pick up the top exam, check the name, set it aside, and continue one by one until finding it or reaching the bottom.",
+                    bulletPoints = listOf(
+                        "Best Case: The first paper checked matches the target student (1 operation).",
+                        "Worst Case: The paper is at the very bottom or not in the stack at all (100 operations)."
+                    )
+                ),
+                LessonSection(
+                    id = "lin_search_steps",
+                    type = LessonSectionType.ALGORITHM_STEPS,
+                    title = "Step-by-Step Algorithm Execution",
+                    body = "Linear Search follows a deterministic, sequential procedure across any collection:",
+                    bulletPoints = listOf(
+                        "Initialize current index pointer i = 0.",
+                        "Check if i < array.size. If false, terminate and return -1 (target not found).",
+                        "Compare array[i] with target value.",
+                        "If array[i] == target, return current index i immediately.",
+                        "If array[i] != target, increment i by 1 (i = i + 1).",
+                        "Repeat from Step 2 until a match is found or collection bounds are exhausted."
+                    )
                 )
             ),
             codeExamples = listOf(
@@ -153,6 +177,31 @@ fun sentinelSearch(arr: IntArray, target: Int): Int {
                         "Always use low + (high - low) / 2 in production code."
                     ),
                     highlightNote = "Joshua Bloch documented this bug in 2006 after it lurked in Java's java.util.Arrays for over 9 years."
+                ),
+                LessonSection(
+                    id = "bin_search_analogy",
+                    type = LessonSectionType.REAL_WORLD_EXAMPLES,
+                    title = "Searching a Printed Dictionary",
+                    body = "When searching for the word 'Prism' in a printed physical Oxford English Dictionary, nobody starts reading from page 1. You open roughly to the middle ('M'). Seeing 'P' comes after 'M', you discard all pages from A through M in a single movement, halving the book instantly.",
+                    bulletPoints = listOf(
+                        "Every page turn cuts the remaining book in half.",
+                        "Even in a 1,000-page dictionary, you reach the exact word in at most 10 page turns!"
+                    )
+                ),
+                LessonSection(
+                    id = "bin_search_steps",
+                    type = LessonSectionType.ALGORITHM_STEPS,
+                    title = "Step-by-Step Algorithm Execution",
+                    body = "Binary Search systematically narrows the valid candidate search interval [low..high]:",
+                    bulletPoints = listOf(
+                        "Verify that input collection is sorted in ascending monotonic order.",
+                        "Set boundary pointers: low = 0 and high = array.size - 1.",
+                        "While low <= high, compute overflow-safe midpoint: mid = low + (high - low) / 2.",
+                        "Compare array[mid] with target: if array[mid] == target, return index mid.",
+                        "If array[mid] < target, target is in right partition: set low = mid + 1.",
+                        "If array[mid] > target, target is in left partition: set high = mid - 1.",
+                        "If while loop terminates without match (low > high), return -1 (element not present)."
+                    )
                 )
             ),
             codeExamples = listOf(

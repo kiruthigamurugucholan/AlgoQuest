@@ -1252,4 +1252,14 @@ object DsaTopicCatalogueRepository {
                     it.id.lowercase().contains(q)
         }
     }
+
+    fun getNextSubtopic(currentSubtopicId: String): DsaSubtopic? {
+        val index = subtopics.indexOfFirst { it.id == currentSubtopicId }
+        return if (index != -1 && index + 1 < subtopics.size) subtopics[index + 1] else null
+    }
+
+    fun getPreviousSubtopic(currentSubtopicId: String): DsaSubtopic? {
+        val index = subtopics.indexOfFirst { it.id == currentSubtopicId }
+        return if (index > 0) subtopics[index - 1] else null
+    }
 }

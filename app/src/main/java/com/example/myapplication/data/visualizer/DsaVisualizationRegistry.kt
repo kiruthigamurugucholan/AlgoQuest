@@ -850,7 +850,6 @@ object DsaVisualizationRegistry {
 
     fun generateStepsForSubtopic(subtopicId: String, customInput: String? = null): List<DsaVisualizerStep> {
         val scenario = getScenarioForSubtopic(subtopicId)
-        return scenario?.generateSteps?.invoke(customInput)
-            ?: SearchingVisualizerGenerator.generateBinarySearch(customInput)
+        return scenario?.generateSteps?.invoke(customInput) ?: emptyList()
     }
 }

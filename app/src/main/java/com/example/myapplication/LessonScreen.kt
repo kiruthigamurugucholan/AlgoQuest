@@ -99,6 +99,9 @@ fun LessonScreen(
     LaunchedEffect(lessonId) {
         learningViewModel?.clearCatalogueCompletionResult()
         scrollState.scrollTo(0)
+        if (lessonId.endsWith("_viz")) {
+            onVisualize(subtopicId)
+        }
     }
 
     val subtopic = remember(subtopicId) {
@@ -127,7 +130,7 @@ fun LessonScreen(
     val isCompleted = completedIds.contains(lessonId)
 
     var currentMode by remember(lessonId) {
-        mutableStateOf(if (lessonId.endsWith("_viz")) "VISUALIZE" else "LEARN")
+        mutableStateOf("LEARN")
     }
 
     val currentLessonNumber = lessonContent?.lessonNumber ?: currentOutline?.lessonNumber ?: 1
@@ -143,15 +146,22 @@ fun LessonScreen(
     val nextOutline = remember(subtopic, currentLessonNumber) {
         subtopic?.let { DsaLessonContentRepository.getNextLessonOutline(it, currentLessonNumber) }
     }
+    val prevSubtopic = remember(subtopicId) {
+        DsaTopicCatalogueRepository.getPreviousSubtopic(subtopicId)
+    }
+    val nextSubtopic = remember(subtopicId) {
+        DsaTopicCatalogueRepository.getNextSubtopic(subtopicId)
+    }
 
     fun navigateToOutline(outline: DsaLessonOutline) {
         when {
             outline.lessonType == "VISUALIZER" -> {
-                currentMode = "VISUALIZE"
+                onVisualize(subtopicId)
             }
             outline.lessonType == "QUIZ" -> {
-                if (outline.quizLessonId != null) {
-                    onOpenQuiz(outline.quizLessonId)
+                val qId = outline.quizLessonId ?: subtopic?.quizLessonId
+                if (qId != null) {
+                    onOpenQuiz(qId)
                 } else {
                     currentMode = "PRACTICE"
                 }
@@ -413,7 +423,21 @@ fun LessonScreen(
                                 if (selected) cyan else border,
                                 RoundedCornerShape(10.dp)
                             )
-                            .clickable { currentMode = mode },
+                            .clickable {
+                                when (mode) {
+                                    "LEARN" -> currentMode = "LEARN"
+                                    "VISUALIZE" -> onVisualize(subtopicId)
+                                    "PRACTICE" -> {
+                                        val quizOutline = outlines.firstOrNull { it.lessonType == "QUIZ" && it.quizLessonId != null }
+                                        val qId = quizOutline?.quizLessonId ?: subtopic?.quizLessonId
+                                        if (qId != null) {
+                                            onOpenQuiz(qId)
+                                        } else {
+                                            currentMode = "PRACTICE"
+                                        }
+                                    }
+                                }
+                            },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -432,29 +456,42 @@ fun LessonScreen(
             // 3. Body: Driven by Current Mode
             when (currentMode) {
                 "VISUALIZE" -> {
-                    DsaUniversalVisualizer(
-                        subtopicId = subtopicId,
-                        isLabCompleted = completedIds.contains("${subtopicId}_viz"),
-                        onCompleteLab = {
-                            val vizOutline = outlines.firstOrNull { it.lessonType == "VISUALIZER" }
-                            val vizId = vizOutline?.lessonId ?: "${subtopicId}_viz"
-                            val xp = vizOutline?.xpReward ?: 25
-                            val syntheticLesson = DsaLessonContent(
-                                lessonId = vizId,
-                                subtopicId = subtopicId,
-                                lessonNumber = vizOutline?.lessonNumber ?: 2,
-                                title = vizOutline?.title ?: "Interactive Visualizer Lab",
-                                subtitle = "Interactive Visualizer Lab for ${subtopic?.name ?: "this topic"}",
-                                estimatedMinutes = 5,
-                                xpReward = xp,
-                                sections = emptyList()
-                            )
-                            learningViewModel?.completeCatalogueLesson(
-                                lesson = syntheticLesson,
-                                onSyncedWithBackend = onLessonCompletedSynced
+                    LaunchedEffect(Unit) {
+                        onVisualize(subtopicId)
+                        currentMode = "LEARN"
+                    }
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(cardBg)
+                            .border(1.dp, cyan.copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                            .padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Interactive Visualization in Viz Lab",
+                            style = TextStyle(fontFamily = LessonPoppins, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = textPrimary)
+                        )
+                        Text(
+                            text = "Step-by-step interactive algorithm visualizer with playback controls is open in the Viz Lab tab.",
+                            style = TextStyle(fontFamily = LessonInter, fontSize = 12.5.sp, color = textSecondary)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(purple)
+                                .clickable { onVisualize(subtopicId) }
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "Open Viz Lab 👁️",
+                                style = TextStyle(fontFamily = LessonInter, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
                             )
                         }
-                    )
+                    }
                 }
 
                 "PRACTICE" -> {
@@ -525,7 +562,7 @@ fun LessonScreen(
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(Brush.horizontalGradient(listOf(purple.copy(alpha = 0.25f), cyan.copy(alpha = 0.15f))))
                                 .border(1.dp, cyan.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                                .clickable { currentMode = "VISUALIZE" }
+                                .clickable { onVisualize(subtopicId) }
                                 .padding(14.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -679,89 +716,103 @@ fun LessonScreen(
             }
 
             // 5. Previous / Next Lesson Navigation
-            if (prevOutline != null || nextOutline != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Previous Button
+                val prevEnabled = prevOutline != null || prevSubtopic != null
+                val prevLabel = when {
+                    prevOutline != null -> "Prev Lesson"
+                    prevSubtopic != null -> "Prev Topic"
+                    else -> "First Topic"
+                }
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Previous Button
-                    val prevEnabled = prevOutline != null
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (prevEnabled) cardBg else cardBg.copy(alpha = 0.4f))
-                            .border(
-                                1.dp,
-                                if (prevEnabled) border else border.copy(alpha = 0.4f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable(enabled = prevEnabled) {
-                                prevOutline?.let { navigateToOutline(it) }
-                            }
-                            .padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        LessonIconCanvas(14.dp) { d ->
-                            drawLessonChevronLeft(d, if (prevEnabled) textPrimary else textMuted)
-                        }
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            text = if (prevOutline != null) "Prev Lesson" else "First Lesson",
-                            style = TextStyle(
-                                fontFamily = LessonInter,
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 12.5.sp,
-                                color = if (prevEnabled) textPrimary else textMuted
-                            ),
-                            maxLines = 1
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (prevEnabled) cardBg else cardBg.copy(alpha = 0.4f))
+                        .border(
+                            1.dp,
+                            if (prevEnabled) border else border.copy(alpha = 0.4f),
+                            RoundedCornerShape(12.dp)
                         )
+                        .clickable(enabled = prevEnabled) {
+                            if (prevOutline != null) {
+                                navigateToOutline(prevOutline)
+                            } else if (prevSubtopic != null) {
+                                onOpenLesson("${prevSubtopic.id}_l1")
+                            }
+                        }
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    LessonIconCanvas(14.dp) { d ->
+                        drawLessonChevronLeft(d, if (prevEnabled) textPrimary else textMuted)
                     }
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = prevLabel,
+                        style = TextStyle(
+                            fontFamily = LessonInter,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.5.sp,
+                            color = if (prevEnabled) textPrimary else textMuted
+                        ),
+                        maxLines = 1
+                    )
+                }
 
-                    // Next Button
-                    val nextEnabled = nextOutline != null
-                    val nextLabel = when {
-                        nextOutline == null -> "End of Topic"
+                // Next Button
+                val nextEnabled = nextOutline != null || nextSubtopic != null
+                val nextLabel = when {
+                    nextOutline != null -> when {
                         nextOutline.lessonType == "VISUALIZER" && nextOutline.hasContent -> "Visualizer Lab"
                         nextOutline.lessonType == "QUIZ" && nextOutline.hasContent -> "Take Quiz"
                         else -> "Next Lesson"
                     }
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (nextEnabled) purple.copy(alpha = 0.2f) else cardBg.copy(alpha = 0.4f)
-                            )
-                            .border(
-                                1.dp,
-                                if (nextEnabled) purple.copy(alpha = 0.6f) else border.copy(alpha = 0.4f),
-                                RoundedCornerShape(12.dp)
-                            )
-                            .clickable(enabled = nextEnabled) {
-                                nextOutline?.let { navigateToOutline(it) }
-                            }
-                            .padding(horizontal = 12.dp),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = nextLabel,
-                            style = TextStyle(
-                                fontFamily = LessonInter,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.5.sp,
-                                color = if (nextEnabled) textPrimary else textMuted
-                            ),
-                            maxLines = 1
+                    nextSubtopic != null -> "Next Topic"
+                    else -> "End of Topics"
+                }
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (nextEnabled) purple.copy(alpha = 0.2f) else cardBg.copy(alpha = 0.4f)
                         )
-                        Spacer(Modifier.width(6.dp))
-                        LessonIconCanvas(14.dp) { d ->
-                            drawLessonChevronRight(d, if (nextEnabled) cyan else textMuted)
+                        .border(
+                            1.dp,
+                            if (nextEnabled) purple.copy(alpha = 0.6f) else border.copy(alpha = 0.4f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .clickable(enabled = nextEnabled) {
+                            if (nextOutline != null) {
+                                navigateToOutline(nextOutline)
+                            } else if (nextSubtopic != null) {
+                                onOpenLesson("${nextSubtopic.id}_l1")
+                            }
                         }
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = nextLabel,
+                        style = TextStyle(
+                            fontFamily = LessonInter,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 12.5.sp,
+                            color = if (nextEnabled) textPrimary else textMuted
+                        ),
+                        maxLines = 1
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    LessonIconCanvas(14.dp) { d ->
+                        drawLessonChevronRight(d, if (nextEnabled) cyan else textMuted)
                     }
                 }
             }
@@ -929,6 +980,7 @@ private fun LessonSectionCard(section: LessonSection) {
         LessonSectionType.CONCEPT_EXPLANATION -> Pair(purple.copy(alpha = 0.16f), purpleSoft)
         LessonSectionType.USE_CASES -> Pair(cyan.copy(alpha = 0.14f), cyan)
         LessonSectionType.REAL_WORLD_EXAMPLES -> Pair(gold.copy(alpha = 0.14f), gold)
+        LessonSectionType.ALGORITHM_STEPS -> Pair(cyan.copy(alpha = 0.16f), cyan)
         LessonSectionType.PERFORMANCE_IMPACT -> Pair(green.copy(alpha = 0.15f), green)
         LessonSectionType.KEY_TAKEAWAYS -> Pair(green.copy(alpha = 0.15f), green)
     }
@@ -967,19 +1019,40 @@ private fun LessonSectionCard(section: LessonSection) {
 
         if (section.bulletPoints.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                section.bulletPoints.forEach { point ->
+                section.bulletPoints.forEachIndexed { pIdx, point ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.Top
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 7.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(badgeColor)
-                        )
+                        if (section.type == LessonSectionType.ALGORITHM_STEPS) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(badgeColor.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = (pIdx + 1).toString(),
+                                    style = TextStyle(
+                                        fontFamily = LessonMono,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = badgeColor
+                                    )
+                                )
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .padding(top = 7.dp)
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(badgeColor)
+                            )
+                        }
                         Text(
                             text = point,
                             style = TextStyle(

@@ -62,8 +62,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.algorithm.CodeLanguage
+import com.example.myapplication.data.visualizer.DsaVisualizationRegistry
 import com.example.myapplication.ui.theme.AlgoTheme
 import com.example.myapplication.ui.theme.highlightCodeLine
+import com.example.myapplication.ui.visualizer.DsaUniversalVisualizer
 import com.example.myapplication.viewmodel.VisualizerViewModel
 
 private val Bg: Color @Composable get() = AlgoTheme.colors.bg
@@ -89,6 +91,7 @@ private val Mono: FontFamily @Composable get() = AlgoTheme.editorFontFamily
 @Composable
 fun AlgorithmVisualizerScreen(
     viewModel: VisualizerViewModel? = null,
+    subtopicId: String? = null,
     onBack: () -> Unit = {},
     onAskAi: (query: String) -> Unit = {},
     onSelectTab: (Int) -> Unit = {},
@@ -98,6 +101,21 @@ fun AlgorithmVisualizerScreen(
     val vm = viewModel ?: remember {
         VisualizerViewModel(context.applicationContext as android.app.Application)
     }
+
+    LaunchedEffect(subtopicId) {
+        if (!subtopicId.isNullOrBlank()) {
+            vm.selectTopic(subtopicId)
+        }
+    }
+
+    val vmSubtopicId by vm.selectedSubtopicId.collectAsState()
+    val activeSubtopicId = subtopicId ?: vmSubtopicId ?: "search_binary"
+    val currentScenario = remember(activeSubtopicId) {
+        DsaVisualizationRegistry.getScenarioForSubtopic(activeSubtopicId)
+    }
+    val isLegacy = activeSubtopicId.lowercase() in listOf(
+        "search_binary", "binary-search", "sort_bubble", "bubble-sort", "array_two_pointers", "two-pointers"
+    )
 
     val selectedAlgIdx by vm.selectedAlg.collectAsState()
     val currentLanguage by vm.currentLanguage.collectAsState()
@@ -123,7 +141,7 @@ fun AlgorithmVisualizerScreen(
     val currentMeta = vm.algMetadata.getOrElse(selectedAlgIdx) { vm.algMetadata[0] }
 
     var userCustomQuestion by remember { mutableStateOf("") }
-    var isCodeEditorExpanded by remember { mutableStateOf(true) }
+    var isCodeEditorExpanded by remember { mutableStateOf(false) }
 
     // Auto complete on final step
     LaunchedEffect(currentStepIdx) {
@@ -159,6 +177,7 @@ fun AlgorithmVisualizerScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
+                        modifier = Modifier.weight(1f, fill = false),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -175,46 +194,81 @@ fun AlgorithmVisualizerScreen(
                         }
                         Column {
                             Text(
-                                text = "Code Visualizer Lab",
+                                text = currentScenario?.title ?: "Code Visualizer Lab",
                                 style = TextStyle(
                                     fontFamily = Poppins,
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 18.sp,
                                     color = TextPrimary
-                                )
+                                ),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                             Text(
-                                text = "User-driven code execution & state tracing",
-                                style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                                text = "${currentScenario?.categoryName ?: "DSA Catalogue"} • Interactive Viz Lab",
+                                style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     }
-                    Badge("EXEC RUNTIME", Cyan.copy(alpha = 0.09f), Cyan)
+                    Badge(currentScenario?.vizType?.name ?: "EXEC RUNTIME", Cyan.copy(alpha = 0.09f), Cyan)
                 }
 
-                // Algorithm selector chips
+                // Algorithm & Topic Selector Chips
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    val algs = listOf("Binary Search", "Bubble Sort", "Two Pointers")
-                    algs.forEachIndexed { idx, name ->
-                        val selected = idx == selectedAlgIdx
+                    // Active Topic Pill if not one of the 3 legacy shortcuts
+                    if (!isLegacy && currentScenario != null) {
                         Box(
                             modifier = Modifier
-                                .weight(1f)
-                                .height(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Purple)
+                                .border(1.dp, Cyan, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "★ ${currentScenario.title}",
+                                style = TextStyle(
+                                    fontFamily = Inter,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    val legacyShortcuts = listOf(
+                        "search_binary" to "Binary Search",
+                        "sort_bubble" to "Bubble Sort",
+                        "array_two_pointers" to "Two Pointers"
+                    )
+
+                    legacyShortcuts.forEach { (subId, name) ->
+                        val selected = activeSubtopicId.equals(subId, ignoreCase = true) ||
+                            (subId == "search_binary" && activeSubtopicId.equals("binary-search", ignoreCase = true)) ||
+                            (subId == "sort_bubble" && activeSubtopicId.equals("bubble-sort", ignoreCase = true)) ||
+                            (subId == "array_two_pointers" && activeSubtopicId.equals("two-pointers", ignoreCase = true))
+                        Box(
+                            modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(if (selected) Purple else CardBg)
                                 .border(1.dp, if (selected) Purple else Color.White.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
-                                .clickable { vm.selectAlgorithm(idx) },
+                                .clickable { vm.selectTopic(subId) }
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
                                 text = name,
                                 style = TextStyle(
                                     fontFamily = Inter,
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                     fontSize = 11.sp,
                                     color = if (selected) Color.White else TextSecondary
                                 )
@@ -222,6 +276,16 @@ fun AlgorithmVisualizerScreen(
                         }
                     }
                 }
+
+                // Dedicated Topic-Specific Interactive Visualization
+                DsaUniversalVisualizer(
+                    subtopicId = activeSubtopicId,
+                    onCompleteLab = {
+                        vm.completeVisualizerActivity(activeSubtopicId)
+                    }
+                )
+
+                if (isLegacy) {
 
                 // Interactive Code Editor Section
                 SectionTitle("Interactive Code Editor & Trace")
@@ -831,6 +895,7 @@ fun AlgorithmVisualizerScreen(
                     modifier = Modifier.weight(1f)
                 )
             }
+        }
 
             // Gemini AI Ally Banner
             Row(

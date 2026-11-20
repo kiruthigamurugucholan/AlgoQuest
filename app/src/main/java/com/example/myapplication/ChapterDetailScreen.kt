@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.model.catalogue.TopicDifficulty
+import com.example.myapplication.data.repository.AdventureRoadmapRepository
 import com.example.myapplication.data.repository.DsaLessonContentRepository
 import com.example.myapplication.data.repository.DsaTopicCatalogueRepository
 import com.example.myapplication.ui.theme.AlgoTheme
@@ -126,33 +127,60 @@ fun ChapterDetailScreen(
 
     val dynamicDetail = (detailState as? TopicDetailUiState.Success)?.data
 
-    val chapterTitle = if (subtopic != null) subtopic.title else (dynamicDetail?.topic?.title ?: "Searching Algorithms")
-    val chapterLabel = if (subtopic != null) (subtopicCategory?.name?.uppercase() ?: "DSA TOPIC") else (dynamicDetail?.topic?.chapterLabel ?: "CHAPTER 03")
-    val chapterSubtitle = if (subtopic != null) subtopic.title else (dynamicDetail?.topic?.subtitle ?: "Divide & Conquer Search")
-    val chapterDesc = if (subtopic != null) subtopic.summary else (dynamicDetail?.topic?.description ?: "Learn how cutting your search space in half reduces O(N) linear lookups into ultra-fast O(log N) operations.")
-    val totalXp = if (subtopic != null) subtopic.xpReward else (dynamicDetail?.topic?.totalXp ?: 900)
-    val progressPct = dynamicDetail?.topic?.progressPercentage ?: 40
-    val completedCount = dynamicDetail?.topic?.completedLessons ?: 2
-    val totalCount = dynamicDetail?.topic?.totalLessons ?: 5
+    val adventureChapter = remember(topicId) {
+        AdventureRoadmapRepository.getChapterById(topicId)
+    }
+    val adventureLessons = remember(topicId) {
+        AdventureRoadmapRepository.getLessonsForChapter(topicId)
+    }
 
-    val lessons = dynamicDetail?.lessons?.map { dl ->
-        LessonItem(
-            id = dl.id,
-            title = dl.title,
-            duration = dl.duration,
-            xp = dl.xp,
-            isCompleted = dl.isCompleted,
-            isCurrent = dl.isCurrent,
-            isLocked = dl.isLocked,
-            isQuiz = dl.lessonType == "QUIZ"
-        )
-    } ?: listOf(
-        LessonItem(1, "Linear vs Binary Search: The 1M Step Difference", "8 min", "+100 XP", isCompleted = true, isCurrent = false, isLocked = false),
-        LessonItem(2, "Binary Search Core Implementation & Invariants", "12 min", "+150 XP", isCompleted = true, isCurrent = false, isLocked = false),
-        LessonItem(3, "Step Through Binary Search Visualizer Lab", "15 min", "+150 XP", isCompleted = false, isCurrent = true, isLocked = false),
-        LessonItem(4, "Search in Rotated Sorted Array", "18 min", "+200 XP", isCompleted = false, isCurrent = false, isLocked = true),
-        LessonItem(5, "Chapter 03 Mastery Test & Challenge", "10 min", "+300 XP", isCompleted = false, isCurrent = false, isLocked = true, isQuiz = true)
-    )
+    val chapterTitle = if (subtopic != null) subtopic.title else (dynamicDetail?.topic?.title ?: adventureChapter?.title ?: "Chapter Details")
+    val chapterLabel = if (subtopic != null) (subtopicCategory?.name?.uppercase() ?: "DSA TOPIC") else (dynamicDetail?.topic?.chapterLabel ?: adventureChapter?.chapterLabel?.uppercase() ?: "CHAPTER $topicId")
+    val chapterSubtitle = if (subtopic != null) subtopic.title else (dynamicDetail?.topic?.subtitle ?: adventureChapter?.subtitle ?: "")
+    val chapterDesc = if (subtopic != null) subtopic.summary else (dynamicDetail?.topic?.description ?: adventureChapter?.description ?: "")
+    val totalXp = if (subtopic != null) subtopic.xpReward else (dynamicDetail?.topic?.totalXp ?: adventureChapter?.totalXp ?: 500)
+
+    val lessons: List<LessonItem> = if (subtopic != null) {
+        emptyList()
+    } else if (!dynamicDetail?.lessons.isNullOrEmpty()) {
+        dynamicDetail!!.lessons.map { dl ->
+            val advL = adventureLessons.firstOrNull { it.id == dl.id }
+            LessonItem(
+                id = dl.id,
+                title = dl.title,
+                duration = dl.duration,
+                xp = dl.xp,
+                isCompleted = dl.isCompleted,
+                isCurrent = dl.isCurrent,
+                isLocked = dl.isLocked,
+                isQuiz = dl.lessonType == "QUIZ" || advL?.isQuiz == true,
+                statusBadge = if (dl.lessonType == "QUIZ" || advL?.isQuiz == true) "QUIZ"
+                              else if (dl.lessonType == "VISUALIZER" || advL?.lessonType == "VISUALIZER") "VISUALIZER"
+                              else "THEORY"
+            )
+        }
+    } else {
+        adventureLessons.mapIndexed { idx, al ->
+            val isCompleted = topicId in listOf(1, 2)
+            val isCurrent = !isCompleted && (idx == 0 || (topicId == 3 && idx == 2))
+            val isLocked = !isCompleted && idx > 0 && !(topicId == 3 && idx <= 2)
+            LessonItem(
+                id = al.id,
+                title = al.title,
+                duration = al.duration,
+                xp = al.xp,
+                isCompleted = isCompleted,
+                isCurrent = isCurrent,
+                isLocked = isLocked,
+                isQuiz = al.isQuiz,
+                statusBadge = if (al.isQuiz) "QUIZ" else if (al.lessonType == "VISUALIZER") "VISUALIZER" else "THEORY"
+            )
+        }
+    }
+
+    val completedCount = dynamicDetail?.topic?.completedLessons ?: lessons.count { it.isCompleted }
+    val totalCount = dynamicDetail?.topic?.totalLessons ?: lessons.size
+    val progressPct = dynamicDetail?.topic?.progressPercentage ?: (if (totalCount > 0) (completedCount * 100) / totalCount else 0)
 
     Column(
         modifier = Modifier
@@ -333,94 +361,137 @@ fun ChapterDetailScreen(
                 }
 
                 // Quick actions inside hero
+                val canViz = if (subtopic != null) {
+                    subtopic.hasVisualizer && !subtopic.visualizerSlug.isNullOrEmpty()
+                } else {
+                    adventureChapter?.primaryVisualizerSlug?.isNotEmpty() == true
+                }
+                val targetChapterSlug = if (subtopic != null) {
+                    subtopic.visualizerSlug
+                } else {
+                    adventureChapter?.primaryVisualizerSlug ?: "array_traversal"
+                }
+                val targetSubtopicId = if (subtopic != null) subtopic.id else (adventureChapter?.primarySubtopicId ?: "array_traversal")
+                val targetLessonId = if (subtopic != null) "${subtopic.id}_l1" else (adventureLessons.firstOrNull { it.lessonType != "QUIZ" && it.lessonType != "VISUALIZER" }?.catalogueLessonId ?: "${targetSubtopicId}_l1")
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    val canViz = if (subtopic != null) {
-                        subtopic.hasVisualizer && !subtopic.visualizerSlug.isNullOrEmpty()
-                    } else true
-
-                    val vizBtnBg = if (canViz) Purple else Cyan.copy(alpha = 0.18f)
-                    val vizBtnBorder = if (canViz) Modifier else Modifier.border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-
+                    // 1. Study Lesson / Learn Button (ALWAYS opens LessonScreen)
+                    val playIconColor = Cyan
                     Row(
                         modifier = Modifier
                             .weight(1f)
                             .height(44.dp)
                             .clip(RoundedCornerShape(12.dp))
-                            .background(vizBtnBg)
-                            .then(vizBtnBorder)
+                            .background(Cyan.copy(alpha = 0.18f))
+                            .border(1.dp, Cyan.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
                             .clickable {
-                                if (subtopic != null) {
-                                    if (canViz) {
-                                        onVisualize(subtopic.visualizerSlug)
-                                    } else {
-                                        onOpenCatalogueLesson(subtopic.id, "${subtopic.id}_l1")
-                                    }
-                                } else {
-                                    onVisualize(null)
-                                }
+                                onOpenCatalogueLesson(targetSubtopicId, targetLessonId)
                             },
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (canViz) {
+                        IconCanvas(16.dp) { d -> drawPlay(d, playIconColor) }
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = "Study Lesson",
+                            style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Cyan)
+                        )
+                    }
+
+                    // 2. Visualize Lab (if available) or Ask AI Ally
+                    if (canViz && !targetChapterSlug.isNullOrEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Purple)
+                                .clickable {
+                                    onVisualize(targetChapterSlug)
+                                },
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             IconCanvas(16.dp) { d -> drawEye(d) }
                             Spacer(Modifier.width(6.dp))
                             Text(
                                 text = "Visualize Lab",
                                 style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = Color.White)
                             )
-                        } else {
-                            Text(
-                                text = "Study Lesson",
-                                style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.SemiBold, fontSize = 13.sp, color = Cyan)
-                            )
                         }
-                    }
-
-                    val aiSparkleColor = PurpleSoft
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(CardBg)
-                            .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
-                            .clickable {
-                                onAskAi(subtopic?.title ?: chapterTitle)
-                            },
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        IconCanvas(16.dp) { d -> drawSparkles(d, aiSparkleColor) }
-                        Spacer(Modifier.width(6.dp))
-                        Text(text = "Ask AI Ally", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TextPrimary))
+                    } else {
+                        val aiSparkleColor = PurpleSoft
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(CardBg)
+                                .border(1.dp, CardBorder, RoundedCornerShape(12.dp))
+                                .clickable {
+                                    onAskAi(subtopic?.title ?: chapterTitle)
+                                },
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconCanvas(16.dp) { d -> drawSparkles(d, aiSparkleColor) }
+                            Spacer(Modifier.width(6.dp))
+                            Text(text = "Ask AI Ally", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 13.sp, color = TextPrimary))
+                        }
                     }
                 }
 
-                // Curated Web Learning Resources shortcut
+                // Row 2: Secondary actions (Ask AI Ally if canViz + Web Learning Resources)
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Cyan.copy(alpha = 0.1f))
-                        .border(1.dp, Cyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                        .clickable { onOpenLearningResources(subtopic?.title ?: chapterTitle) },
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Text(
-                        text = "Explore Web Learning Resources",
-                        style = TextStyle(
-                            fontFamily = Inter,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.5.sp,
-                            color = Cyan
+                    if (canViz && !targetChapterSlug.isNullOrEmpty()) {
+                        val aiSparkleColor = PurpleSoft
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(CardBg)
+                                .border(1.dp, CardBorder, RoundedCornerShape(10.dp))
+                                .clickable {
+                                    onAskAi(subtopic?.title ?: chapterTitle)
+                                },
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconCanvas(14.dp) { d -> drawSparkles(d, aiSparkleColor) }
+                            Spacer(Modifier.width(6.dp))
+                            Text(text = "Ask AI Ally", style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 12.sp, color = TextPrimary))
+                        }
+                    }
+
+                    // Curated Web Learning Resources shortcut
+                    Row(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Cyan.copy(alpha = 0.08f))
+                            .border(1.dp, Cyan.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                            .clickable { onOpenLearningResources(subtopic?.title ?: chapterTitle) },
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Web Learning Resources",
+                            style = TextStyle(
+                                fontFamily = Inter,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp,
+                                color = Cyan
+                            )
                         )
-                    )
+                    }
                 }
             }
 
@@ -473,13 +544,20 @@ fun ChapterDetailScreen(
                     }
                 } else {
                     lessons.forEach { lesson ->
+                        val advLesson = adventureLessons.firstOrNull { it.id == lesson.id }
                         LessonRowItem(
                             lesson = lesson,
                             onClick = {
                                 if (lesson.isQuiz) {
-                                    onOpenQuiz(lesson.id)
+                                    val quizId = advLesson?.quizLessonId ?: 1
+                                    onOpenQuiz(quizId)
+                                } else if (advLesson?.lessonType == "VISUALIZER") {
+                                    val slug = advLesson.visualizerSlug ?: adventureChapter?.primaryVisualizerSlug ?: "array_traversal"
+                                    onVisualize(slug)
                                 } else {
-                                    onStartLesson(null)
+                                    val targetSubtopicId = advLesson?.subtopicId ?: adventureChapter?.primarySubtopicId ?: "array_traversal"
+                                    val targetLessonId = advLesson?.catalogueLessonId ?: "${targetSubtopicId}_l1"
+                                    onOpenCatalogueLesson(targetSubtopicId, targetLessonId)
                                 }
                             }
                         )
