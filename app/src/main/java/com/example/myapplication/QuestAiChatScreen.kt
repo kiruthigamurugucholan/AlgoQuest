@@ -1,9 +1,14 @@
 package com.example.myapplication
 
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import android.widget.Toast
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -16,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,6 +36,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import com.example.myapplication.ui.navigation.preventPagerSwipe
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -58,6 +65,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.myapplication.data.model.response.AiMessageDto
 import com.example.myapplication.viewmodel.AiChatViewModel
+import com.example.myapplication.ui.components.MarkdownText
+import com.example.myapplication.ui.components.MarkdownCodeBlockCard
+import com.example.myapplication.ui.components.LanguageDetector
 
 import com.example.myapplication.ui.theme.AlgoTheme
 
@@ -87,6 +97,7 @@ fun QuestAiChatScreen(
     viewModel: AiChatViewModel? = null,
     onBack: () -> Unit = {},
     initialQuery: String = "",
+    onConsumeInitialQuery: () -> Unit = {},
     onSelectTab: (Int) -> Unit = {},
     showBottomBar: Boolean = true
 ) {
@@ -96,7 +107,21 @@ fun QuestAiChatScreen(
     }
     val uiState by vm.uiState.collectAsState()
     val listState = rememberLazyListState()
-    var inputText by remember { mutableStateOf(initialQuery) }
+    var inputText by remember { mutableStateOf("") }
+    var showSessionsSheet by remember { mutableStateOf(false) }
+
+    // Keep screen awake only while Quest AI is actively generating a response on CPU.
+    // Automatically and immediately clears FLAG_KEEP_SCREEN_ON when response completes,
+    // errors, request is cancelled, or this composable is disposed.
+    DisposableEffect(uiState.isThinking) {
+        val window = context.findActivity()?.window
+        if (uiState.isThinking) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     // Load initial history or fire initial query
     LaunchedEffect(Unit) {
@@ -105,7 +130,9 @@ fun QuestAiChatScreen(
 
     LaunchedEffect(initialQuery) {
         if (initialQuery.isNotBlank()) {
-            vm.sendMessage(initialQuery)
+            val q = initialQuery
+            onConsumeInitialQuery()
+            vm.sendMessage(q)
         }
     }
 
@@ -116,96 +143,144 @@ fun QuestAiChatScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Bg)
-            .statusBarsPadding()
-            .imePadding()
-    ) {
-        // Top Bar
-        Row(
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .fillMaxSize()
+                .background(Bg)
+                .statusBarsPadding()
+                .imePadding()
         ) {
+            // Top Bar
             Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                val textPrimary = TextPrimary
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(CardBg)
-                        .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, CircleShape)
-                        .clickable(onClick = onBack),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconCanvas(16.dp) { d -> drawChevronLeft(d, textPrimary) }
-                }
-                MiniMark(32.dp)
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = "Quest AI Ally",
-                        style = TextStyle(
-                            fontFamily = Poppins,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 17.sp,
-                            color = TextPrimary
-                        )
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    val textPrimary = TextPrimary
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(CardBg)
+                            .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, CircleShape)
+                            .clickable(onClick = onBack),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(Green)
-                        )
-                        Text(
-                            text = "Online · REST Engine",
-                            style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
-                        )
+                        IconCanvas(16.dp) { d -> drawChevronLeft(d, textPrimary) }
                     }
+                    MiniMark(32.dp)
+                    Column(
+                        modifier = Modifier.weight(1f, fill = false),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = uiState.currentSessionTitle ?: "Quest AI Ally",
+                            style = TextStyle(
+                                fontFamily = Poppins,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 16.sp,
+                                color = TextPrimary
+                            ),
+                            maxLines = 1
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(Green)
+                            )
+                            Text(
+                                text = "Online · Ollama Qwen 3 (4B)",
+                                style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                            )
+                        }
+                    }
+                }
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val historyIconColor = PurpleSoft
+
+                    // Conversation History Drawer Button - visibly placed next to PRO badge
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(CardBg)
+                            .border(
+                                1.dp,
+                                if (AlgoTheme.colors.isDark) Purple.copy(alpha = 0.5f) else Purple.copy(alpha = 0.35f),
+                                CircleShape
+                            )
+                            .clickable {
+                                vm.loadSessions(autoSelectLatest = false)
+                                showSessionsSheet = true
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        IconCanvas(18.dp) { d -> drawHistoryList(d, historyIconColor) }
+                    }
+
+                    Badge("PRO", Purple.copy(alpha = 0.15f), PurpleSoft)
                 }
             }
 
-            Badge("PRO", Purple.copy(alpha = 0.15f), PurpleSoft)
-        }
-
-        // Quick suggestions header
+        // Quick suggestions header with horizontal scrolling
         val suggestions = listOf(
             "Binary Search intuitive demo",
             "Explain O(log N)",
             "Two Pointers vs Sliding Window",
             "Recursion stack trace"
         )
+        val suggestionsScrollState = rememberScrollState()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .preventPagerSwipe()
+                .horizontalScroll(suggestionsScrollState)
                 .padding(horizontal = 20.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            suggestions.take(3).forEach { suggestion ->
+            suggestions.forEach { suggestion ->
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(20.dp))
                         .background(CardBg)
-                        .border(1.dp, Color.White.copy(alpha = 0.06f), RoundedCornerShape(20.dp))
+                        .border(
+                            1.dp,
+                            if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor,
+                            RoundedCornerShape(20.dp)
+                        )
                         .clickable {
                             inputText = suggestion
                         }
-                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .padding(horizontal = 14.dp, vertical = 7.dp)
                 ) {
                     Text(
                         text = suggestion,
-                        style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = TextSecondary)
+                        style = TextStyle(
+                            fontFamily = Inter,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = TextSecondary
+                        ),
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
@@ -239,6 +314,32 @@ fun QuestAiChatScreen(
                 item {
                     ThinkingIndicator()
                 }
+            }
+        }
+
+        uiState.error?.let { err ->
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFE74C3C).copy(alpha = 0.12f))
+                    .border(1.dp, Color(0xFFE74C3C).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = err,
+                    style = TextStyle(fontFamily = Inter, fontSize = 11.5.sp, color = Color(0xFFE74C3C)),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "✕",
+                    style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = Color(0xFFE74C3C), fontWeight = FontWeight.Bold),
+                    modifier = Modifier.clickable { vm.clearError() }
+                )
             }
         }
 
@@ -296,11 +397,68 @@ fun QuestAiChatScreen(
             }
         }
 
+        // Retry banner if AI answer generated but MySQL persistence failed
+        uiState.pendingRetryMessage?.let {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFE67E22).copy(alpha = 0.12f))
+                    .border(1.dp, Color(0xFFE67E22).copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "⚠️ Response generated, but cloud sync failed.",
+                    style = TextStyle(fontFamily = Inter, fontSize = 11.5.sp, color = Color(0xFFE67E22)),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Color(0xFFE67E22))
+                        .clickable { vm.retryPendingSave() }
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text(
+                        text = "Retry Sync",
+                        style = TextStyle(fontFamily = Inter, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                    )
+                }
+            }
+        }
+
         // Shared Bottom Navigation Bar
         if (showBottomBar) {
             AlgoQuestBottomBar(selectedTab = 3, onSelectTab = onSelectTab)
         }
     }
+
+    // Persistent Chat History Sessions Bottom Sheet Overlay
+    if (showSessionsSheet) {
+        SessionsBottomSheetOverlay(
+            uiState = uiState,
+            onSelectSession = { sid ->
+                vm.selectSession(sid)
+                showSessionsSheet = false
+            },
+            onNewChat = {
+                vm.startNewChat()
+                showSessionsSheet = false
+            },
+            onDeleteSession = { sid ->
+                vm.deleteSession(sid)
+            },
+            onRefresh = {
+                vm.loadSessions(autoSelectLatest = false)
+            },
+            onDismiss = { showSessionsSheet = false }
+        )
+    }
+}
 }
 
 @Composable
@@ -354,39 +512,18 @@ private fun AiMessageItem(
             IconCanvas(16.dp) { d -> drawSparkles(d, sparkleColor) }
         }
 
-        Text(
-            text = msg.text,
-            style = TextStyle(fontFamily = Inter, fontSize = 14.sp, lineHeight = 21.sp, color = TextPrimary)
+        MarkdownText(
+            markdown = msg.text,
+            modifier = Modifier.fillMaxWidth(),
+            onCopyCode = onCopy
         )
 
         msg.codeSnippet?.let { code ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(CodeBg)
-                    .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.06f) else BorderColor, RoundedCornerShape(12.dp))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Kotlin Snippet",
-                        style = TextStyle(fontFamily = Mono, fontSize = 10.sp, color = TextMuted)
-                    )
-                    Text(
-                        text = "Tap to Copy",
-                        modifier = Modifier.clickable { onCopy(code) },
-                        style = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = PurpleSoft, fontWeight = FontWeight.SemiBold)
-                    )
-                }
-                Text(
-                    text = code,
-                    style = TextStyle(fontFamily = Mono, fontSize = 12.sp, lineHeight = 18.sp, color = Cyan)
+            if (!msg.text.contains(code)) {
+                MarkdownCodeBlockCard(
+                    code = code,
+                    language = LanguageDetector.resolve("", code),
+                    onCopy = onCopy
                 )
             }
         }
@@ -410,7 +547,7 @@ private fun ThinkingIndicator() {
     ) {
         MiniMark(24.dp)
         Text(
-            text = "Quest AI is thinking...",
+            text = "Quest AI is generating with Qwen 3 (4B)...",
             style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = PurpleSoft)
         )
     }
@@ -511,8 +648,274 @@ private fun DrawScope.drawStar(d: Float, color: Color, cx: Float, cy: Float, r: 
     drawPath(path, color, style = Stroke(width = 1.2f * d, join = StrokeJoin.Round))
 }
 
+private fun DrawScope.drawPlus(d: Float, color: Color) {
+    val w = 1.8f * d
+    val mid = 8f * d
+    drawLine(color, Offset(mid, 3.5f * d), Offset(mid, 12.5f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(3.5f * d, mid), Offset(12.5f * d, mid), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawHistoryList(d: Float, color: Color) {
+    val w = 2.0f * d
+    drawLine(color, Offset(3.5f * d, 5.5f * d), Offset(14.5f * d, 5.5f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(3.5f * d, 9.5f * d), Offset(14.5f * d, 9.5f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(3.5f * d, 13.5f * d), Offset(10.5f * d, 13.5f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawTrash(d: Float, color: Color) {
+    val w = 1.4f * d
+    drawLine(color, Offset(3f * d, 5f * d), Offset(13f * d, 5f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5f * d, 5f * d), Offset(5.5f * d, 13f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(11f * d, 5f * d), Offset(10.5f * d, 13f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(5.5f * d, 13f * d), Offset(10.5f * d, 13f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(6f * d, 3f * d), Offset(10f * d, 3f * d), w, StrokeCap.Round)
+}
+
+private fun DrawScope.drawCheck(d: Float, color: Color) {
+    val w = 1.8f * d
+    drawLine(color, Offset(3.5f * d, 8f * d), Offset(6.5f * d, 11.5f * d), w, StrokeCap.Round)
+    drawLine(color, Offset(6.5f * d, 11.5f * d), Offset(12.5f * d, 4.5f * d), w, StrokeCap.Round)
+}
+
+@Composable
+private fun SessionsBottomSheetOverlay(
+    uiState: com.example.myapplication.viewmodel.AiChatUiState,
+    onSelectSession: (Int) -> Unit,
+    onNewChat: () -> Unit,
+    onDeleteSession: (Int) -> Unit,
+    onRefresh: () -> Unit = {},
+    onDismiss: () -> Unit
+) {
+    val checkColor = Green
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.65f))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.BottomCenter
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .background(CardBg)
+                .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.08f) else BorderColor, RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
+                .clickable(enabled = false) {}
+                .padding(20.dp)
+        ) {
+            // Drag handle indicator
+            Box(
+                modifier = Modifier
+                    .size(width = 36.dp, height = 4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(Color.White.copy(alpha = 0.2f))
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            Spacer(Modifier.height(14.dp))
+
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Conversations",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = TextPrimary
+                        )
+                    )
+                    Badge("${uiState.sessions.size}", Purple.copy(alpha = 0.15f), PurpleSoft)
+                }
+
+                // Close Button
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(FieldBg)
+                        .clickable(onClick = onDismiss),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("✕", style = TextStyle(fontFamily = Inter, fontSize = 13.sp, color = TextSecondary))
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            // Clear + New Chat Action inside Conversations Sheet
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(46.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Purple, PurpleLight)
+                        )
+                    )
+                    .clickable(onClick = onNewChat),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconCanvas(16.dp) { d -> drawPlus(d, Color.White) }
+                    Text(
+                        text = "+ Start a New Conversation",
+                        style = TextStyle(
+                            fontFamily = Poppins,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp,
+                            color = Color.White
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+
+            if (uiState.isLoadingSessions && uiState.sessions.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("Loading saved conversations...", style = TextStyle(fontFamily = Inter, fontSize = 13.sp, color = TextMuted))
+                }
+            } else if (uiState.sessions.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    ) {
+                        Text(
+                            text = if (uiState.error != null) "Could not load conversations" else "No saved conversations yet",
+                            style = TextStyle(fontFamily = Inter, fontWeight = FontWeight.Medium, fontSize = 14.sp, color = TextPrimary)
+                        )
+                        Text(
+                            text = if (uiState.error != null) uiState.error!! else "Ask your first DSA question to start saving!",
+                            style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = TextMuted)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(FieldBg)
+                                .border(1.dp, if (AlgoTheme.colors.isDark) Color.White.copy(alpha = 0.1f) else BorderColor, RoundedCornerShape(8.dp))
+                                .clickable { onRefresh() }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                        ) {
+                            Text("Refresh History", style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = PurpleSoft, fontWeight = FontWeight.Medium))
+                        }
+                    }
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 380.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(uiState.sessions, key = { it.id }) { session ->
+                        val isSelected = session.id == uiState.currentSessionId
+                        val itemBg = if (isSelected) Purple.copy(alpha = 0.15f) else FieldBg
+                        val itemBorder = if (isSelected) Purple.copy(alpha = 0.6f) else BorderColor.copy(alpha = 0.3f)
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(itemBg)
+                                .border(1.dp, itemBorder, RoundedCornerShape(14.dp))
+                                .clickable { onSelectSession(session.id) }
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = session.title,
+                                        style = TextStyle(
+                                            fontFamily = Inter,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Medium,
+                                            fontSize = 13.5.sp,
+                                            color = if (isSelected) PurpleSoft else TextPrimary
+                                        ),
+                                        maxLines = 1
+                                    )
+                                    if (session.messageCount > 0) {
+                                        Badge("${session.messageCount}", Cyan.copy(alpha = 0.1f), Cyan)
+                                    }
+                                }
+                                val preview = if (!session.lastMessage.isNullOrBlank()) session.lastMessage else "No messages"
+                                Text(
+                                    text = preview,
+                                    style = TextStyle(fontFamily = Inter, fontSize = 11.5.sp, color = TextMuted),
+                                    maxLines = 1
+                                )
+                            }
+
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (isSelected) {
+                                    IconCanvas(16.dp) { d -> drawCheck(d, checkColor) }
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(CardBg)
+                                        .clickable { onDeleteSession(session.id) },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    IconCanvas(14.dp) { d -> drawTrash(d, Color(0xFFE74C3C).copy(alpha = 0.8f)) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 @Preview(showBackground = true, widthDp = 390, heightDp = 844)
 @Composable
 private fun QuestAiChatScreenPreview() {
     QuestAiChatScreen()
+}
+
+/**
+ * Safely resolves an [Activity] from a given [Context], traversing any [ContextWrapper] layers.
+ */
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

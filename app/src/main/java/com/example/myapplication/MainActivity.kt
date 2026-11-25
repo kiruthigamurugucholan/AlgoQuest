@@ -115,7 +115,10 @@ class MainActivity : ComponentActivity() {
                     val visualizerViewModel = viewModelProvider[VisualizerViewModel::class.java]
                     val quizViewModel = viewModelProvider[QuizViewModel::class.java]
                     val profileViewModel = viewModelProvider[ProfileViewModel::class.java]
-                    val aiChatViewModel = viewModelProvider[AiChatViewModel::class.java]
+                    val aiChatViewModel = ViewModelProvider(
+                        this@MainActivity,
+                        AiChatViewModel.Factory(application)
+                    )[AiChatViewModel::class.java]
                     val learningResourceViewModel = viewModelProvider[LearningResourceViewModel::class.java]
 
                     // Navigation Screen indices:
@@ -593,6 +596,7 @@ class MainActivity : ComponentActivity() {
                                                 coroutineScope.launch { pagerState.animateScrollToPage(0) }
                                             },
                                             initialQuery = aiQuery,
+                                            onConsumeInitialQuery = { aiQuery = "" },
                                             onSelectTab = ::onSelectTab,
                                             showBottomBar = false
                                         )

@@ -239,9 +239,62 @@ data class AiMessageDto(
     @SerializedName("id") val id: String,
     @SerializedName("sender") val sender: String,
     @SerializedName("text") val text: String,
-    @SerializedName("code_snippet") val codeSnippet: String?,
-    @SerializedName("timestamp") val timestamp: String,
-    @SerializedName("tags") val tags: List<String> = emptyList()
+    @SerializedName("code_snippet") val codeSnippet: String? = null,
+    @SerializedName("timestamp") val timestamp: String = "Just now",
+    @SerializedName("tags") val tags: List<String> = emptyList(),
+    @SerializedName("client_message_id") val clientMessageId: String? = null
+)
+
+// --- AI Chat Sessions & Persistent Messages ---
+data class ChatSessionDto(
+    @SerializedName("id") val id: Int,
+    @SerializedName("title") val title: String,
+    @SerializedName("created_at") val createdAt: String? = null,
+    @SerializedName("updated_at") val updatedAt: String? = null,
+    @SerializedName("message_count") val messageCount: Int = 0,
+    @SerializedName("last_message") val lastMessage: String? = null,
+    @SerializedName("last_message_time") val lastMessageTime: String? = null
+)
+
+data class ChatSessionsData(
+    @SerializedName("sessions") val sessions: List<ChatSessionDto> = emptyList()
+)
+
+data class CreateChatSessionRequest(
+    @SerializedName("title") val title: String? = null
+)
+
+data class CreateChatSessionData(
+    @SerializedName("session") val session: ChatSessionDto
+)
+
+data class ChatSessionMessagesData(
+    @SerializedName("session") val session: ChatSessionDto,
+    @SerializedName("messages") val messages: List<PersistentChatMessageDto> = emptyList()
+)
+
+data class PersistentChatMessageDto(
+    @SerializedName("id") val id: String,
+    @SerializedName("client_message_id") val clientMessageId: String? = null,
+    @SerializedName("session_id") val sessionId: Int,
+    @SerializedName("sender") val sender: String,
+    @SerializedName("message") val message: String,
+    @SerializedName("code_snippet") val codeSnippet: String? = null,
+    @SerializedName("tags") val tags: List<String> = emptyList(),
+    @SerializedName("timestamp") val timestamp: String? = null,
+    @SerializedName("created_at") val createdAt: String? = null
+)
+
+data class SaveChatMessageRequest(
+    @SerializedName("sender") val sender: String,
+    @SerializedName("message") val message: String,
+    @SerializedName("client_message_id") val clientMessageId: String? = null,
+    @SerializedName("code_snippet") val codeSnippet: String? = null,
+    @SerializedName("tags") val tags: List<String>? = null
+)
+
+data class SaveChatMessageData(
+    @SerializedName("message") val message: PersistentChatMessageDto
 )
 
 // --- Visualizer AI ---

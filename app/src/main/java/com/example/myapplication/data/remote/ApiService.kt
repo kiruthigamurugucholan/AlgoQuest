@@ -24,6 +24,7 @@ import com.example.myapplication.data.model.response.TopicDetailData
 import com.example.myapplication.data.model.response.TopicsData
 import retrofit2.Response
 import retrofit2.http.Body
+import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.PUT
@@ -88,6 +89,36 @@ interface ApiService {
 
     @GET("ai/history")
     suspend fun getAiHistory(): Response<ApiResponse<AiHistoryData>>
+
+    @GET("ai/sessions")
+    suspend fun getAiSessions(): Response<ApiResponse<com.example.myapplication.data.model.response.ChatSessionsData>>
+
+    @POST("ai/sessions")
+    suspend fun createAiSession(
+        @Body req: com.example.myapplication.data.model.response.CreateChatSessionRequest
+    ): Response<ApiResponse<com.example.myapplication.data.model.response.CreateChatSessionData>>
+
+    @PUT("ai/sessions/{id}")
+    suspend fun updateAiSession(
+        @Path("id") sessionId: Int,
+        @Body req: com.example.myapplication.data.model.response.CreateChatSessionRequest
+    ): Response<ApiResponse<com.example.myapplication.data.model.response.CreateChatSessionData>>
+
+    @DELETE("ai/sessions/{id}")
+    suspend fun deleteAiSession(
+        @Path("id") sessionId: Int
+    ): Response<ApiResponse<Map<String, Any>>>
+
+    @GET("ai/sessions/{id}/messages")
+    suspend fun getAiSessionMessages(
+        @Path("id") sessionId: Int
+    ): Response<ApiResponse<com.example.myapplication.data.model.response.ChatSessionMessagesData>>
+
+    @POST("ai/sessions/{id}/messages")
+    suspend fun saveAiChatMessage(
+        @Path("id") sessionId: Int,
+        @Body req: com.example.myapplication.data.model.response.SaveChatMessageRequest
+    ): Response<ApiResponse<com.example.myapplication.data.model.response.SaveChatMessageData>>
 
     @POST("ai/visualizer-explain")
     suspend fun explainVisualizer(@Body req: com.example.myapplication.data.model.request.VisualizerAiRequest): Response<ApiResponse<com.example.myapplication.data.model.response.VisualizerAiData>>
