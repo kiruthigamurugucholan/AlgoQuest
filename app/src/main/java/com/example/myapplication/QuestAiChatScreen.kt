@@ -498,6 +498,8 @@ private fun AiMessageItem(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         val sparkleColor = Cyan
+        val isStreaming = msg.timestamp == "Generating..." || msg.tags.contains("Streaming")
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -513,10 +515,28 @@ private fun AiMessageItem(
         }
 
         MarkdownText(
-            markdown = msg.text,
+            markdown = if (isStreaming && msg.text.isNotBlank()) "${msg.text} ▌" else msg.text,
             modifier = Modifier.fillMaxWidth(),
             onCopyCode = onCopy
         )
+
+        if (isStreaming) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(Cyan)
+                )
+                Text(
+                    text = "Streaming response...",
+                    style = TextStyle(fontFamily = Inter, fontSize = 11.sp, color = Cyan)
+                )
+            }
+        }
 
         msg.codeSnippet?.let { code ->
             if (!msg.text.contains(code)) {
@@ -547,7 +567,7 @@ private fun ThinkingIndicator() {
     ) {
         MiniMark(24.dp)
         Text(
-            text = "Quest AI is generating with Qwen 3 (4B)...",
+            text = "Quest AI is connecting to Qwen 3 (4B)...",
             style = TextStyle(fontFamily = Inter, fontSize = 12.sp, color = PurpleSoft)
         )
     }

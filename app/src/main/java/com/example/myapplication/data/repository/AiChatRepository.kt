@@ -3,6 +3,8 @@ package com.example.myapplication.data.repository
 import android.content.Context
 import android.util.Log
 import com.example.myapplication.data.model.ai.PythonAiChatRequest
+import com.example.myapplication.data.model.ai.PythonAiStreamChunk
+import com.example.myapplication.data.model.ai.PythonAiTimings
 import com.example.myapplication.data.model.response.AiMessageDto
 import com.example.myapplication.data.model.response.ChatSessionDto
 import com.example.myapplication.data.model.response.CreateChatSessionRequest
@@ -13,7 +15,11 @@ import com.example.myapplication.data.remote.AiConfig
 import com.example.myapplication.data.remote.AiRetrofitClient
 import com.example.myapplication.data.remote.ApiService
 import com.example.myapplication.data.remote.RetrofitClient
+import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.net.ConnectException
@@ -90,6 +96,69 @@ class AiChatRepository @JvmOverloads constructor(
         }
         result
     }
+
+    /**
+     * Streams tokens progressively from POST /chat/stream on the Python AI backend.
+     * Emits incremental PythonAiStreamChunk payloads as Server-Sent Events arrive.
+     */
+    fun sendMessageStream(message: String): Flow<PythonAiStreamChunk> = flow {
+        val query = message.trim()
+        if (query.isBlank()) {
+            emit(PythonAiStreamChunk(error = "Please provide a question.", done = true))
+            return@flow
+        }
+
+        logD("sendMessageStream executing for: $query")
+        val response = try {
+            activeApi.chatStream(PythonAiChatRequest(question = query))
+        } catch (e: Exception) {
+            logE("chatStream connection error: ${e.message}", e)
+            emit(PythonAiStreamChunk(error = e.message ?: "Connection failure", done = true))
+            return@flow
+        }
+
+        if (!response.isSuccessful || response.body() == null) {
+            val code = response.code()
+            val errorMsg = when (code) {
+                504 -> "The AI model took too long to respond (server timeout 504)."
+                400 -> "The question format was invalid (HTTP 400)."
+                500 -> "The Python AI server encountered an internal error (HTTP 500)."
+                else -> "AI Ally server error (HTTP $code): ${response.message()}"
+            }
+            logE("chatStream unsuccessful: HTTP $code - $errorMsg")
+            emit(PythonAiStreamChunk(error = errorMsg, done = true))
+            return@flow
+        }
+
+        val body = response.body()!!
+        val gson = Gson()
+        val reader = body.byteStream().bufferedReader()
+        try {
+            var line: String?
+            while (reader.readLine().also { line = it } != null) {
+                val l = line?.trim() ?: continue
+                if (l.startsWith("data:")) {
+                    val jsonStr = l.removePrefix("data:").trim()
+                    if (jsonStr.isNotEmpty()) {
+                        try {
+                            val chunk = gson.fromJson(jsonStr, PythonAiStreamChunk::class.java)
+                            if (chunk != null) {
+                                emit(chunk)
+                            }
+                        } catch (e: Exception) {
+                            logW("Failed to parse SSE JSON chunk: $jsonStr ($e)")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logE("Error reading SSE stream: ${e.message}", e)
+            emit(PythonAiStreamChunk(error = e.message, done = true))
+        } finally {
+            try { reader.close() } catch (_: Exception) {}
+            try { body.close() } catch (_: Exception) {}
+        }
+    }.flowOn(Dispatchers.IO)
 
     private suspend fun executeChatRequest(query: String): Result<AiMessageDto> {
         return try {
@@ -334,7 +403,7 @@ class AiChatRepository @JvmOverloads constructor(
      * Extracts markdown code blocks (e.g. ```kotlin ... ```) into a separate snippet field
      * so that the UI can render it with syntax styling and the copy button.
      */
-    private fun extractCodeSnippet(fullAnswer: String): Pair<String, String?> {
+    fun extractCodeSnippet(fullAnswer: String): Pair<String, String?> {
         val codeFenceRegex = Regex("```(?:[a-zA-Z0-9_]*)\\n?([\\s\\S]*?)```")
         val match = codeFenceRegex.find(fullAnswer)
         return if (match != null) {

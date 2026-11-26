@@ -126,6 +126,9 @@ class PythonAiIntegrationTest {
                 )
             }
 
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.error(404, "".toResponseBody("text/plain".toMediaType()))
+
             override suspend fun health(): Response<PythonAiHealthResponse> {
                 return Response.success(PythonAiHealthResponse(status = "success", message = "OK"))
             }
@@ -148,6 +151,10 @@ class PythonAiIntegrationTest {
     fun testRepositoryHandlesTimeoutGracefully() = runBlocking {
         val timingOutApi = object : AiApiService {
             override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> {
+                throw SocketTimeoutException("Read timed out")
+            }
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> {
                 throw SocketTimeoutException("Read timed out")
             }
 
@@ -174,6 +181,9 @@ class PythonAiIntegrationTest {
                 return Response.error(504, errorBody.toResponseBody("application/json".toMediaType()))
             }
 
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.error(504, "".toResponseBody("text/plain".toMediaType()))
+
             override suspend fun health(): Response<PythonAiHealthResponse> =
                 Response.error(504, "Timeout".toResponseBody("application/json".toMediaType()))
         }
@@ -191,6 +201,10 @@ class PythonAiIntegrationTest {
     fun testRepositoryHandlesConnectionRefusedGracefully() = runBlocking {
         val offlineApi = object : AiApiService {
             override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> {
+                throw ConnectException("Failed to connect to /10.0.2.2:5001")
+            }
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> {
                 throw ConnectException("Failed to connect to /10.0.2.2:5001")
             }
 
@@ -227,6 +241,9 @@ class PythonAiIntegrationTest {
                 )
             }
 
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.error(404, "".toResponseBody("text/plain".toMediaType()))
+
             override suspend fun health(): Response<PythonAiHealthResponse> {
                 return Response.success(PythonAiHealthResponse(status = "success"))
             }
@@ -246,6 +263,10 @@ class PythonAiIntegrationTest {
     fun testRepositoryHandlesPersistentSocketAbortWithUserFriendlyMessage() = runBlocking {
         val abortingApi = object : AiApiService {
             override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> {
+                throw SocketException("Software caused connection abort")
+            }
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> {
                 throw SocketException("Software caused connection abort")
             }
 
@@ -271,6 +292,9 @@ class PythonAiIntegrationTest {
                 return Response.success(PythonAiChatResponse(status = "success", answer = "ok"))
             }
 
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.error(404, "".toResponseBody("text/plain".toMediaType()))
+
             override suspend fun health(): Response<PythonAiHealthResponse> =
                 Response.success(PythonAiHealthResponse(status = "success"))
         }
@@ -291,6 +315,9 @@ class PythonAiIntegrationTest {
                 val errorBody = """{"status":"error","message":"Model out of memory"}"""
                 return Response.error(500, errorBody.toResponseBody("application/json".toMediaType()))
             }
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.error(500, "".toResponseBody("text/plain".toMediaType()))
 
             override suspend fun health(): Response<PythonAiHealthResponse> =
                 Response.error(500, "Error".toResponseBody("application/json".toMediaType()))
@@ -363,5 +390,48 @@ class PythonAiIntegrationTest {
         val errorState = thinkingState.copy(isThinking = false, error = "Connection aborted")
         assertFalse("On error, isThinking must be false to clear keep-screen-on flag", errorState.isThinking)
         assertEquals("Connection aborted", errorState.error)
+    }
+
+    @Test
+    fun testRepositoryStreamsTokensProgressively() = runBlocking {
+        val sseContent = "data: {\"token\": \"Binary \", \"done\": false}\n\n" +
+                "data: {\"token\": \"search \", \"done\": false}\n\n" +
+                "data: {\"token\": \"walkthrough\", \"done\": false}\n\n" +
+                "data: {\"token\": \"\", \"done\": true, \"answer\": \"Binary search walkthrough\", \"timings\": {\"ttft_ms\": 120, \"total_duration_ms\": 300, \"tokens_per_second\": 7.5}}\n\n"
+
+        val streamingApi = object : AiApiService {
+            override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> {
+                return Response.success(PythonAiChatResponse(status = "success", answer = "ok"))
+            }
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> {
+                return Response.success(sseContent.toResponseBody("text/event-stream".toMediaType()))
+            }
+
+            override suspend fun health(): Response<PythonAiHealthResponse> =
+                Response.success(PythonAiHealthResponse(status = "success"))
+        }
+
+        val repository = AiChatRepository(context = null, api = streamingApi)
+        val chunks = mutableListOf<String>()
+        var finalAnswer: String? = null
+        var timings: com.example.myapplication.data.model.ai.PythonAiTimings? = null
+
+        repository.sendMessageStream("Binary search").collect { chunk ->
+            chunk.token?.let { if (it.isNotEmpty()) chunks.add(it) }
+            if (chunk.done) {
+                finalAnswer = chunk.answer
+                timings = chunk.timings
+            }
+        }
+
+        assertEquals(3, chunks.size)
+        assertEquals("Binary ", chunks[0])
+        assertEquals("search ", chunks[1])
+        assertEquals("walkthrough", chunks[2])
+        assertEquals("Binary search walkthrough", finalAnswer)
+        assertNotNull(timings)
+        assertEquals(120L, timings!!.ttftMs)
+        assertEquals(7.5, timings!!.tokensPerSecond!!, 0.01)
     }
 }

@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.model.ai.PythonAiTimings
 import com.example.myapplication.data.model.response.AiMessageDto
 import com.example.myapplication.data.model.response.ChatSessionDto
 import com.example.myapplication.data.remote.AiConfig
@@ -359,7 +360,6 @@ class AiChatViewModel @JvmOverloads constructor(
                                 currentSessionId = created.id,
                                 currentSessionTitle = created.title
                             )
-                            // Refresh sessions in background
                             repository.fetchSessions().onSuccess { sList ->
                                 _uiState.value = _uiState.value.copy(sessions = sList)
                             }
@@ -382,142 +382,129 @@ class AiChatViewModel @JvmOverloads constructor(
                     }
                 }
 
-                // Request answer from Python Flask + Ollama Qwen 3 (4B) backend
-                repository.sendMessage(trimmed).fold(
-                    onSuccess = { aiMsg ->
-                        logI("AI generation succeeded (text length: ${aiMsg.text.length})")
-                        val withAi = _uiState.value.messages.toMutableList().apply { add(aiMsg) }
-                        _uiState.value = _uiState.value.copy(
-                            messages = withAi,
-                            isThinking = false,
-                            error = null
-                        )
+                // 4. Progressive SSE streaming from Python Flask /chat/stream
+                val aiMsgId = "ai_${System.currentTimeMillis()}"
+                val accumulated = StringBuilder()
+                var firstTokenReceived = false
+                var streamFailed = false
+                var streamErrorMsg: String? = null
+                var streamAnswer: String? = null
+                var streamTimings: PythonAiTimings? = null
 
-                        // Persist AI response to MySQL
-                        val aiClientMsgId = "ai_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
-                        var currentSid = activeSessionId ?: _uiState.value.currentSessionId
-
-                        if (currentSid == null) {
-                            // Retry creating session now that server may be responsive
-                            repository.createSession(autoTitle).onSuccess { created ->
-                                currentSid = created.id
-                                activeSessionId = created.id
-                                _uiState.value = _uiState.value.copy(
-                                    currentSessionId = created.id,
-                                    currentSessionTitle = created.title
-                                )
-                                if (!userMessageSaved) {
-                                    repository.saveMessageToDb(
-                                        sessionId = created.id,
-                                        sender = "user",
-                                        message = trimmed,
-                                        clientMessageId = userClientMsgId
-                                    )
-                                    userMessageSaved = true
-                                }
-                            }
+                try {
+                    repository.sendMessageStream(trimmed).collect { chunk ->
+                        if (chunk.error != null && !firstTokenReceived) {
+                            streamFailed = true
+                            streamErrorMsg = chunk.error
+                            return@collect
                         }
 
-                        if (currentSid != null) {
-                            if (!userMessageSaved) {
-                                repository.saveMessageToDb(
-                                    sessionId = currentSid,
-                                    sender = "user",
-                                    message = trimmed,
-                                    clientMessageId = userClientMsgId
-                                )
-                            }
-                            repository.saveMessageToDb(
-                                sessionId = currentSid,
-                                sender = "ai",
-                                message = aiMsg.text,
-                                clientMessageId = aiClientMsgId,
-                                codeSnippet = aiMsg.codeSnippet,
-                                tags = aiMsg.tags
-                            ).fold(
-                                onSuccess = {
-                                    logI("AI message successfully saved to MySQL")
-                                    // Refresh session message count in background
-                                    repository.fetchSessions().onSuccess { sList ->
-                                        _uiState.value = _uiState.value.copy(sessions = sList)
-                                    }
-                                },
-                                onFailure = { saveErr ->
-                                    logW("AI message generated but MySQL persistence failed: ${saveErr.message}")
-                                    // AI answer is STILL rendered! Record pending save for user retry
-                                    _uiState.value = _uiState.value.copy(
-                                        pendingRetryMessage = PendingSaveMessage(
-                                            sessionId = currentSid,
-                                            sender = "ai",
-                                            message = aiMsg.text,
-                                            clientMessageId = aiClientMsgId,
-                                            codeSnippet = aiMsg.codeSnippet,
-                                            tags = aiMsg.tags
-                                        )
-                                    )
-                                }
-                            )
-                        } else {
-                            // Session creation failed twice - queue for retry with full payload
-                            logW("Could not create session in MySQL for AI response, setting pending retry")
-                            _uiState.value = _uiState.value.copy(
-                                pendingRetryMessage = PendingSaveMessage(
-                                    sessionId = null,
+                        if (!chunk.token.isNullOrEmpty()) {
+                            accumulated.append(chunk.token)
+                            if (!firstTokenReceived) {
+                                firstTokenReceived = true
+                                val provisionalAi = AiMessageDto(
+                                    id = aiMsgId,
                                     sender = "ai",
-                                    message = aiMsg.text,
-                                    clientMessageId = aiClientMsgId,
-                                    codeSnippet = aiMsg.codeSnippet,
-                                    tags = aiMsg.tags,
-                                    sessionTitle = autoTitle,
-                                    userQuestion = trimmed,
-                                    userClientMessageId = userClientMsgId
+                                    text = accumulated.toString(),
+                                    codeSnippet = null,
+                                    timestamp = "Generating...",
+                                    tags = listOf("Qwen 3 (4B)", "Streaming")
                                 )
-                            )
-                        }
-
-                        // Check and notify achievements in background
-                        try {
-                            com.example.myapplication.data.repository.ProfileRepository(getApplication())
-                                .getProfile()
-                                .onSuccess { profileData ->
-                                    com.example.myapplication.reminder.ReminderScheduler.checkAndNotifyAchievements(
-                                        getApplication(),
-                                        profileData
-                                    )
+                                val withProvisional = _uiState.value.messages.toMutableList().apply { add(provisionalAi) }
+                                _uiState.value = _uiState.value.copy(
+                                    messages = withProvisional,
+                                    isThinking = false
+                                )
+                            } else {
+                                val streamedMessages = _uiState.value.messages.map { m ->
+                                    if (m.id == aiMsgId) m.copy(text = accumulated.toString()) else m
                                 }
-                        } catch (_: Exception) {}
-                    },
-                    onFailure = { err ->
-                        logE("AI generation failed: ${err.javaClass.simpleName}: ${err.message}")
-                        val userFriendlyMsg = when (err) {
-                            is SocketTimeoutException ->
-                                "The AI model took too long to respond. Qwen 3 (4B) is running on CPU. Please try again with a more focused question."
-                            is ConnectException ->
-                                "Unable to connect to AI server at ${AiConfig.getResolvedBaseUrl()}. Please make sure your Python Flask server is running on port 5001."
-                            is SocketException ->
-                                "Connection to the AI server was interrupted (connection aborted). Please make sure your device is connected to the same network as ${AiConfig.getResolvedBaseUrl()} and try again."
-                            is UnknownHostException ->
-                                "Cannot reach the AI host at ${AiConfig.getResolvedBaseUrl()}."
-                            else ->
-                                err.message ?: "Failed to get AI response."
+                                _uiState.value = _uiState.value.copy(messages = streamedMessages)
+                            }
                         }
 
-                        val errorAiMsg = AiMessageDto(
-                            id = "err_${System.currentTimeMillis()}",
-                            sender = "ai",
-                            text = "⚠️ $userFriendlyMsg",
-                            codeSnippet = null,
-                            timestamp = "Error",
-                            tags = listOf("Offline / Error")
-                        )
-                        val withError = _uiState.value.messages.toMutableList().apply { add(errorAiMsg) }
-                        _uiState.value = _uiState.value.copy(
-                            messages = withError,
-                            isThinking = false,
-                            error = userFriendlyMsg
-                        )
+                        if (chunk.done) {
+                            if (!chunk.answer.isNullOrBlank()) {
+                                streamAnswer = chunk.answer
+                            }
+                            streamTimings = chunk.timings
+                        }
                     }
-                )
+                } catch (e: Exception) {
+                    logW("Stream collection exception: ${e.message}")
+                    if (!firstTokenReceived) {
+                        streamFailed = true
+                        streamErrorMsg = e.message
+                    }
+                }
+
+                // 5. Handle stream completion or fallback to non-streaming
+                if (firstTokenReceived || !streamAnswer.isNullOrBlank()) {
+                    val rawAnswer = streamAnswer ?: accumulated.toString()
+                    val (displayText, snippet) = repository.extractCodeSnippet(rawAnswer)
+
+                    val tags = mutableListOf("Qwen 3 (4B)")
+                    streamTimings?.tokensPerSecond?.let { spd ->
+                        if (spd > 0) tags.add(String.format(java.util.Locale.US, "%.1f tok/s", spd))
+                    }
+                    streamTimings?.ttftMs?.let { ttft ->
+                        if (ttft > 0) tags.add("${ttft}ms TTFT")
+                    }
+
+                    val finalAi = AiMessageDto(
+                        id = aiMsgId,
+                        sender = "ai",
+                        text = displayText,
+                        codeSnippet = snippet,
+                        timestamp = "Just now",
+                        tags = tags
+                    )
+
+                    val finalized = _uiState.value.messages.map { m ->
+                        if (m.id == aiMsgId) finalAi else m
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        messages = finalized,
+                        isThinking = false,
+                        error = null
+                    )
+
+                    // Persist final AI answer to MySQL exactly once
+                    persistAiMessage(
+                        aiMsg = finalAi,
+                        autoTitle = autoTitle,
+                        trimmed = trimmed,
+                        userClientMsgId = userClientMsgId,
+                        activeSessionId = activeSessionId,
+                        userMessageSaved = userMessageSaved
+                    )
+                } else {
+                    // Fallback to non-streaming /chat endpoint
+                    logW("Stream yielded no tokens ($streamErrorMsg). Falling back to non-streaming POST /chat...")
+                    repository.sendMessage(trimmed).fold(
+                        onSuccess = { aiMsg ->
+                            logI("Fallback non-streaming AI generation succeeded (${aiMsg.text.length} chars)")
+                            val withAi = _uiState.value.messages.toMutableList().apply { add(aiMsg) }
+                            _uiState.value = _uiState.value.copy(
+                                messages = withAi,
+                                isThinking = false,
+                                error = null
+                            )
+                            persistAiMessage(
+                                aiMsg = aiMsg,
+                                autoTitle = autoTitle,
+                                trimmed = trimmed,
+                                userClientMsgId = userClientMsgId,
+                                activeSessionId = activeSessionId,
+                                userMessageSaved = userMessageSaved
+                            )
+                        },
+                        onFailure = { err ->
+                            handleChatFailure(err)
+                        }
+                    )
+                }
             } finally {
                 activeJob = null
                 if (_uiState.value.isThinking) {
@@ -525,6 +512,134 @@ class AiChatViewModel @JvmOverloads constructor(
                 }
             }
         }
+    }
+
+    private suspend fun persistAiMessage(
+        aiMsg: AiMessageDto,
+        autoTitle: String,
+        trimmed: String,
+        userClientMsgId: String,
+        activeSessionId: Int?,
+        userMessageSaved: Boolean
+    ) {
+        val aiClientMsgId = "ai_${System.currentTimeMillis()}_${UUID.randomUUID().toString().take(8)}"
+        var currentSid = activeSessionId ?: _uiState.value.currentSessionId
+        var userSaved = userMessageSaved
+
+        if (currentSid == null) {
+            repository.createSession(autoTitle).onSuccess { created ->
+                currentSid = created.id
+                _uiState.value = _uiState.value.copy(
+                    currentSessionId = created.id,
+                    currentSessionTitle = created.title
+                )
+                if (!userSaved) {
+                    repository.saveMessageToDb(
+                        sessionId = created.id,
+                        sender = "user",
+                        message = trimmed,
+                        clientMessageId = userClientMsgId
+                    )
+                    userSaved = true
+                }
+            }
+        }
+
+        if (currentSid != null) {
+            if (!userSaved) {
+                repository.saveMessageToDb(
+                    sessionId = currentSid,
+                    sender = "user",
+                    message = trimmed,
+                    clientMessageId = userClientMsgId
+                )
+            }
+            repository.saveMessageToDb(
+                sessionId = currentSid,
+                sender = "ai",
+                message = aiMsg.text,
+                clientMessageId = aiClientMsgId,
+                codeSnippet = aiMsg.codeSnippet,
+                tags = aiMsg.tags
+            ).fold(
+                onSuccess = {
+                    logI("AI message successfully saved to MySQL")
+                    repository.fetchSessions().onSuccess { sList ->
+                        _uiState.value = _uiState.value.copy(sessions = sList)
+                    }
+                },
+                onFailure = { saveErr ->
+                    logW("AI message generated but MySQL persistence failed: ${saveErr.message}")
+                    _uiState.value = _uiState.value.copy(
+                        pendingRetryMessage = PendingSaveMessage(
+                            sessionId = currentSid,
+                            sender = "ai",
+                            message = aiMsg.text,
+                            clientMessageId = aiClientMsgId,
+                            codeSnippet = aiMsg.codeSnippet,
+                            tags = aiMsg.tags
+                        )
+                    )
+                }
+            )
+        } else {
+            logW("Could not create session in MySQL for AI response, setting pending retry")
+            _uiState.value = _uiState.value.copy(
+                pendingRetryMessage = PendingSaveMessage(
+                    sessionId = null,
+                    sender = "ai",
+                    message = aiMsg.text,
+                    clientMessageId = aiClientMsgId,
+                    codeSnippet = aiMsg.codeSnippet,
+                    tags = aiMsg.tags,
+                    sessionTitle = autoTitle,
+                    userQuestion = trimmed,
+                    userClientMessageId = userClientMsgId
+                )
+            )
+        }
+
+        try {
+            com.example.myapplication.data.repository.ProfileRepository(getApplication())
+                .getProfile()
+                .onSuccess { profileData ->
+                    com.example.myapplication.reminder.ReminderScheduler.checkAndNotifyAchievements(
+                        getApplication(),
+                        profileData
+                    )
+                }
+        } catch (_: Exception) {}
+    }
+
+    private fun handleChatFailure(err: Throwable) {
+        logE("AI generation failed: ${err.javaClass.simpleName}: ${err.message}")
+        val userFriendlyMsg = when (err) {
+            is SocketTimeoutException ->
+                "The AI model took too long to respond. Qwen 3 (4B) is running on CPU. Please try again with a more focused question."
+            is ConnectException ->
+                "Unable to connect to AI server at ${AiConfig.getResolvedBaseUrl()}. Please make sure your Python Flask server is running on port 5001."
+            is SocketException ->
+                "Connection to the AI server was interrupted (connection aborted). Please make sure your device is connected to the same network as ${AiConfig.getResolvedBaseUrl()} and try again."
+            is UnknownHostException ->
+                "Cannot reach the AI host at ${AiConfig.getResolvedBaseUrl()}."
+            else ->
+                err.message ?: "Failed to get AI response."
+        }
+
+        val errorAiMsg = AiMessageDto(
+            id = "err_${System.currentTimeMillis()}",
+            sender = "ai",
+            text = "⚠️ $userFriendlyMsg",
+            codeSnippet = null,
+            timestamp = "Error",
+            tags = listOf("Offline / Error")
+        )
+        val withError = _uiState.value.messages.toMutableList().apply { add(errorAiMsg) }
+        _uiState.value = _uiState.value.copy(
+            messages = withError,
+            isThinking = false,
+            error = userFriendlyMsg
+        )
     }
 
     fun clearError() {
