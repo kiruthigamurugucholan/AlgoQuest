@@ -3,6 +3,7 @@ package com.example.myapplication.data.repository
 import android.content.Context
 import android.util.Log
 import com.example.myapplication.data.model.ai.PythonAiChatRequest
+import com.example.myapplication.data.model.ai.PythonAiHistoryItem
 import com.example.myapplication.data.model.ai.PythonAiStreamChunk
 import com.example.myapplication.data.model.ai.PythonAiTimings
 import com.example.myapplication.data.model.response.AiMessageDto
@@ -71,14 +72,18 @@ class AiChatRepository @JvmOverloads constructor(
      * Sends a DSA question to the Python Flask /chat endpoint on IO dispatcher.
      * Retries once on transient socket aborts using a fresh connection.
      */
-    suspend fun sendMessage(message: String): Result<AiMessageDto> = withContext(Dispatchers.IO) {
+    @JvmOverloads
+    suspend fun sendMessage(
+        message: String,
+        history: List<PythonAiHistoryItem>? = null
+    ): Result<AiMessageDto> = withContext(Dispatchers.IO) {
         val query = message.trim()
         if (query.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("Please provide a question."))
         }
 
-        logD("sendMessage query: $query")
-        var result = executeChatRequest(query)
+        logD("sendMessage query: $query (history: ${history?.size ?: 0} turns)")
+        var result = executeChatRequest(query, history)
         if (result.isFailure) {
             val ex = result.exceptionOrNull()
             logW("Initial chat request failed: ${ex?.javaClass?.simpleName}: ${ex?.message}")
@@ -86,7 +91,7 @@ class AiChatRepository @JvmOverloads constructor(
             if (ex is SocketException && ex !is ConnectException) {
                 logI("Attempting single auto-retry with a fresh session...")
                 AiRetrofitClient.resetSession()
-                result = executeChatRequest(query)
+                result = executeChatRequest(query, history)
                 if (result.isSuccess) {
                     logI("Auto-retry succeeded!")
                 } else {
@@ -101,16 +106,20 @@ class AiChatRepository @JvmOverloads constructor(
      * Streams tokens progressively from POST /chat/stream on the Python AI backend.
      * Emits incremental PythonAiStreamChunk payloads as Server-Sent Events arrive.
      */
-    fun sendMessageStream(message: String): Flow<PythonAiStreamChunk> = flow {
+    @JvmOverloads
+    fun sendMessageStream(
+        message: String,
+        history: List<PythonAiHistoryItem>? = null
+    ): Flow<PythonAiStreamChunk> = flow {
         val query = message.trim()
         if (query.isBlank()) {
             emit(PythonAiStreamChunk(error = "Please provide a question.", done = true))
             return@flow
         }
 
-        logD("sendMessageStream executing for: $query")
+        logD("sendMessageStream executing for: $query (history: ${history?.size ?: 0} turns)")
         val response = try {
-            activeApi.chatStream(PythonAiChatRequest(question = query))
+            activeApi.chatStream(PythonAiChatRequest(question = query, history = history))
         } catch (e: Exception) {
             logE("chatStream connection error: ${e.message}", e)
             emit(PythonAiStreamChunk(error = e.message ?: "Connection failure", done = true))
@@ -160,11 +169,14 @@ class AiChatRepository @JvmOverloads constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun executeChatRequest(query: String): Result<AiMessageDto> {
+    private suspend fun executeChatRequest(
+        query: String,
+        history: List<PythonAiHistoryItem>? = null
+    ): Result<AiMessageDto> {
         return try {
             val start = System.currentTimeMillis()
             logD("Executing POST /chat at ${AiConfig.getResolvedBaseUrl()}...")
-            val response = activeApi.chat(PythonAiChatRequest(question = query))
+            val response = activeApi.chat(PythonAiChatRequest(question = query, history = history))
             val durationMs = System.currentTimeMillis() - start
             logD("POST /chat responded in ${durationMs}ms with code ${response.code()}")
 

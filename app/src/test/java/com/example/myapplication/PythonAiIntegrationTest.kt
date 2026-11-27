@@ -2,6 +2,7 @@ package com.example.myapplication
 
 import com.example.myapplication.data.model.ai.PythonAiChatRequest
 import com.example.myapplication.data.model.ai.PythonAiChatResponse
+import com.example.myapplication.data.model.ai.PythonAiHistoryItem
 import com.example.myapplication.data.model.ai.PythonAiHealthResponse
 import com.example.myapplication.data.remote.AiApiService
 import com.example.myapplication.data.remote.AiConfig
@@ -93,6 +94,29 @@ class PythonAiIntegrationTest {
         assertEquals("error", errResponse.status)
         assertEquals("The AI model took too long to respond. Please try again.", errResponse.message)
         assertNull(errResponse.answer)
+    }
+
+    @Test
+    fun testPythonAiChatRequestWithHistorySerialization() {
+        val history = listOf(
+            PythonAiHistoryItem(role = "user", content = "What is Merge Sort?"),
+            PythonAiHistoryItem(role = "assistant", content = "Merge Sort is O(n log n)")
+        )
+        val request = PythonAiChatRequest(
+            question = "Why does Merge Sort have O(n log n) time complexity?",
+            history = history
+        )
+        val json = gson.toJson(request)
+        assertTrue(json.contains("\"question\":\"Why does Merge Sort have O(n log n) time complexity?\""))
+        assertTrue(json.contains("\"role\":\"user\""))
+        assertTrue(json.contains("\"content\":\"What is Merge Sort?\""))
+        assertTrue(json.contains("\"role\":\"assistant\""))
+
+        val deserialized = gson.fromJson(json, PythonAiChatRequest::class.java)
+        assertEquals("Why does Merge Sort have O(n log n) time complexity?", deserialized.question)
+        assertEquals(2, deserialized.history?.size)
+        assertEquals("user", deserialized.history?.get(0)?.role)
+        assertEquals("What is Merge Sort?", deserialized.history?.get(0)?.content)
     }
 
     @Test
@@ -433,5 +457,92 @@ class PythonAiIntegrationTest {
         assertNotNull(timings)
         assertEquals(120L, timings!!.ttftMs)
         assertEquals(7.5, timings!!.tokensPerSecond!!, 0.01)
+    }
+
+    @Test
+    fun testRepositoryStreamsErrorBeforeFirstToken() = runBlocking {
+        val sseErrorContent = "data: {\"error\": \"Server timeout 504\", \"done\": true}\n\n"
+
+        val streamingApi = object : AiApiService {
+            override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> =
+                Response.success(PythonAiChatResponse(status = "success", answer = "fallback answer"))
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.success(sseErrorContent.toResponseBody("text/event-stream".toMediaType()))
+
+            override suspend fun health(): Response<PythonAiHealthResponse> =
+                Response.success(PythonAiHealthResponse(status = "success"))
+        }
+
+        val repository = AiChatRepository(context = null, api = streamingApi)
+        val chunks = mutableListOf<com.example.myapplication.data.model.ai.PythonAiStreamChunk>()
+
+        repository.sendMessageStream("Merge sort").collect { chunk ->
+            chunks.add(chunk)
+        }
+
+        assertEquals(1, chunks.size)
+        assertEquals("Server timeout 504", chunks[0].error)
+        assertTrue(chunks[0].done)
+    }
+
+    @Test
+    fun testRepositoryStreamsErrorAfterHeadingPrefill() = runBlocking {
+        val sseErrorAfterHeading = "data: {\"token\": \"### Merge Sort Walkthrough\\n\\n\", \"done\": false}\n\n" +
+                "data: {\"error\": \"500 Server Error: Ollama failed\", \"done\": true}\n\n"
+
+        val streamingApi = object : AiApiService {
+            override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> =
+                Response.success(PythonAiChatResponse(status = "success", answer = "fallback answer"))
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.success(sseErrorAfterHeading.toResponseBody("text/event-stream".toMediaType()))
+
+            override suspend fun health(): Response<PythonAiHealthResponse> =
+                Response.success(PythonAiHealthResponse(status = "success"))
+        }
+
+        val repository = AiChatRepository(context = null, api = streamingApi)
+        val chunks = mutableListOf<com.example.myapplication.data.model.ai.PythonAiStreamChunk>()
+
+        repository.sendMessageStream("Merge sort").collect { chunk ->
+            chunks.add(chunk)
+        }
+
+        assertEquals(2, chunks.size)
+        assertEquals("### Merge Sort Walkthrough\n\n", chunks[0].token)
+        assertFalse(chunks[0].done)
+        assertEquals("500 Server Error: Ollama failed", chunks[1].error)
+        assertTrue(chunks[1].done)
+    }
+
+    @Test
+    fun testRepositoryStreamsErrorAfterMultipleTokens() = runBlocking {
+        val sseErrorAfterTokens = "data: {\"token\": \"### Merge Sort\\n\\n\", \"done\": false}\n\n" +
+                "data: {\"token\": \"Merge Sort divides\", \"done\": false}\n\n" +
+                "data: {\"token\": \" the array\", \"done\": false}\n\n" +
+                "data: {\"error\": \"Connection terminated mid-stream\", \"done\": true}\n\n"
+
+        val streamingApi = object : AiApiService {
+            override suspend fun chat(req: PythonAiChatRequest): Response<PythonAiChatResponse> =
+                Response.success(PythonAiChatResponse(status = "success", answer = "fallback"))
+
+            override suspend fun chatStream(req: PythonAiChatRequest): Response<okhttp3.ResponseBody> =
+                Response.success(sseErrorAfterTokens.toResponseBody("text/event-stream".toMediaType()))
+
+            override suspend fun health(): Response<PythonAiHealthResponse> =
+                Response.success(PythonAiHealthResponse(status = "success"))
+        }
+
+        val repository = AiChatRepository(context = null, api = streamingApi)
+        val chunks = mutableListOf<com.example.myapplication.data.model.ai.PythonAiStreamChunk>()
+
+        repository.sendMessageStream("Merge sort").collect { chunk ->
+            chunks.add(chunk)
+        }
+
+        assertEquals(4, chunks.size)
+        assertEquals("Connection terminated mid-stream", chunks[3].error)
+        assertTrue(chunks[3].done)
     }
 }

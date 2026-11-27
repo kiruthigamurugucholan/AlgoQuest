@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.myapplication.data.model.ai.PythonAiHistoryItem
 import com.example.myapplication.data.model.ai.PythonAiTimings
 import com.example.myapplication.data.model.response.AiMessageDto
 import com.example.myapplication.data.model.response.ChatSessionDto
@@ -382,6 +383,28 @@ class AiChatViewModel @JvmOverloads constructor(
                     }
                 }
 
+                // Extract recent conversation history (last 4-6 turns, max 600 chars each)
+                val historyItems = _uiState.value.messages
+                    .filter { m ->
+                        m.id != "init_1" &&
+                        m.id != userMsg.id &&
+                        m.timestamp != "Online" &&
+                        m.timestamp != "Generating..." &&
+                        !m.text.startsWith("Error:") &&
+                        m.text.isNotBlank()
+                    }
+                    .takeLast(6)
+                    .map { m ->
+                        val role = if (m.sender.equals("user", ignoreCase = true)) "user" else "assistant"
+                        val fullText = if (!m.codeSnippet.isNullOrBlank()) {
+                            "${m.text}\n```python\n${m.codeSnippet}\n```"
+                        } else {
+                            m.text
+                        }
+                        val content = if (fullText.length > 600) fullText.take(597) + "..." else fullText
+                        PythonAiHistoryItem(role = role, content = content)
+                    }
+
                 // 4. Progressive SSE streaming from Python Flask /chat/stream
                 val aiMsgId = "ai_${System.currentTimeMillis()}"
                 val accumulated = StringBuilder()
@@ -392,8 +415,8 @@ class AiChatViewModel @JvmOverloads constructor(
                 var streamTimings: PythonAiTimings? = null
 
                 try {
-                    repository.sendMessageStream(trimmed).collect { chunk ->
-                        if (chunk.error != null && !firstTokenReceived) {
+                    repository.sendMessageStream(trimmed, historyItems).collect { chunk ->
+                        if (!chunk.error.isNullOrBlank()) {
                             streamFailed = true
                             streamErrorMsg = chunk.error
                             return@collect
@@ -433,14 +456,12 @@ class AiChatViewModel @JvmOverloads constructor(
                     }
                 } catch (e: Exception) {
                     logW("Stream collection exception: ${e.message}")
-                    if (!firstTokenReceived) {
-                        streamFailed = true
-                        streamErrorMsg = e.message
-                    }
+                    streamFailed = true
+                    streamErrorMsg = e.message
                 }
 
                 // 5. Handle stream completion or fallback to non-streaming
-                if (firstTokenReceived || !streamAnswer.isNullOrBlank()) {
+                if (!streamFailed && (firstTokenReceived || !streamAnswer.isNullOrBlank())) {
                     val rawAnswer = streamAnswer ?: accumulated.toString()
                     val (displayText, snippet) = repository.extractCodeSnippet(rawAnswer)
 
@@ -481,8 +502,16 @@ class AiChatViewModel @JvmOverloads constructor(
                     )
                 } else {
                     // Fallback to non-streaming /chat endpoint
-                    logW("Stream yielded no tokens ($streamErrorMsg). Falling back to non-streaming POST /chat...")
-                    repository.sendMessage(trimmed).fold(
+                    // Clean up any provisional message that was added during streaming before falling back
+                    if (firstTokenReceived) {
+                        val cleanedMessages = _uiState.value.messages.filter { it.id != aiMsgId }
+                        _uiState.value = _uiState.value.copy(
+                            messages = cleanedMessages,
+                            isThinking = true
+                        )
+                    }
+                    logW("Stream failed or yielded no tokens ($streamErrorMsg). Falling back to non-streaming POST /chat...")
+                    repository.sendMessage(trimmed, historyItems).fold(
                         onSuccess = { aiMsg ->
                             logI("Fallback non-streaming AI generation succeeded (${aiMsg.text.length} chars)")
                             val withAi = _uiState.value.messages.toMutableList().apply { add(aiMsg) }

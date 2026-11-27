@@ -3,10 +3,19 @@ package com.example.myapplication.data.model.ai
 import com.google.gson.annotations.SerializedName
 
 /**
- * Request payload for Python Flask /chat endpoint.
+ * Single message in conversational history sent to the Python Flask AI backend.
+ */
+data class PythonAiHistoryItem(
+    @SerializedName("role") val role: String,
+    @SerializedName("content") val content: String
+)
+
+/**
+ * Request payload for Python Flask /chat and /chat/stream endpoints.
  */
 data class PythonAiChatRequest(
-    @SerializedName("question") val question: String
+    @SerializedName("question") val question: String,
+    @SerializedName("history") val history: List<PythonAiHistoryItem>? = null
 )
 
 /**
